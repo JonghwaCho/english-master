@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>English Master v2</title>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<style>
+:root {
+  --bg: #0f0f1a; --bg2: #1a1a2e; --bg3: #25253e;
+  --primary: #6366f1; --primary-hover: #818cf8;
+  --green: #22c55e; --green-bg: #052e16;
+  --red: #ef4444; --red-bg: #450a0a;
+  --amber: #f59e0b; --amber-bg: #451a03;
+  --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+  --border: #334155; --radius: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 240px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 24px 20px; border-bottom: 1px solid var(--border); }
+.sidebar-header h1 { font-size: 18px; font-weight: 700; }
+.sidebar-header span { color: var(--primary); }
+.nav-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text2); transition: all 0.15s; border-left: 3px solid transparent; }
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active { background: var(--bg3); color: var(--primary); border-left-color: var(--primary); font-weight: 600; }
+.nav-badge { margin-left: auto; background: var(--primary); color: white; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+.nav-badge.red { background: var(--red); }
+.sidebar-footer { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
+.sidebar-toggles { padding: 8px 20px; display: flex; flex-direction: column; gap: 6px; }
+.sidebar-categories { padding: 8px 0; border-top: 1px solid var(--border); }
+.sidebar-categories .cat-header { padding: 8px 20px; font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; }
+.sidebar-categories .cat-header button { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; }
+.sidebar-categories .cat-header button:hover { color: var(--primary); }
+.cat-nav-item { padding: 8px 20px 8px 32px; cursor: pointer; font-size: 13px; color: var(--text2); transition: all 0.15s; display: flex; align-items: center; gap: 8px; }
+.cat-nav-item:hover { background: var(--bg3); color: var(--text); }
+.cat-nav-item.active { color: var(--primary); font-weight: 600; }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.page { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding: 32px; }
+.page.active { display: flex; }
+.page-title { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
+
+/* Cards */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.card-title { font-size: 14px; color: var(--text2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Buttons */
+.btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-green { background: var(--green); color: white; }
+.btn-green:hover { opacity: 0.9; }
+.btn-red { background: var(--red); color: white; }
+.btn-red:hover { opacity: 0.9; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+.btn-outline:hover { border-color: var(--text2); color: var(--text); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-play { background: none; border: 1px solid var(--border); color: var(--text2); cursor: pointer; padding: 4px 10px; font-size: 14px; border-radius: 6px; transition: all 0.15s; }
+.btn-play:hover { color: var(--primary); border-color: var(--primary); }
+
+/* Toggle button styles */
+.toggle-btn { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text3); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.toggle-btn.on { border-color: var(--green); color: var(--green); }
+
+/* Input */
+input[type="text"], input[type="url"] {
+  width: 100%; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+input:focus { border-color: var(--primary); }
+select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; outline: none; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; }
+.stat-number { font-size: 36px; font-weight: 700; }
+.stat-label { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.stat-number.blue { color: var(--primary); }
+.stat-number.green { color: var(--green); }
+.stat-number.red { color: var(--red); }
+.stat-number.amber { color: var(--amber); }
+
+/* Study card */
+.study-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 40px; text-align: center; max-width: 700px; margin: 0 auto; width: 100%; }
+.study-sentence { font-size: 22px; line-height: 1.6; margin: 24px 0; min-height: 60px; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 4px; transition: color 0.3s, text-shadow 0.3s; text-align: left; }
+.study-translation { font-size: 16px; color: var(--text2); margin: 0 0 16px; min-height: 24px; font-style: italic; }
+.study-meta { font-size: 13px; color: var(--text3); margin-bottom: 16px; }
+.study-buttons { display: flex; gap: 16px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+.study-buttons .btn { min-width: 140px; padding: 14px 24px; font-size: 16px; }
+.study-progress { height: 4px; background: var(--bg3); border-radius: 2px; margin-bottom: 24px; overflow: hidden; }
+.study-progress-bar { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s; }
+
+/* Karaoke word highlighting */
+.karaoke-word { display: inline; transition: color 0.12s, text-shadow 0.12s; }
+.karaoke-word.highlighted { color: #38bdf8; text-shadow: 0 0 12px rgba(56, 189, 248, 0.4); }
+.karaoke-word.spoken { color: var(--text2); }
+
+/* Word selector */
+.word-selector { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 16px 0; }
+.word-chip { padding: 6px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.15s; }
+.word-chip:hover { border-color: var(--red); }
+.word-chip.selected { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+
+/* Video list */
+.video-item { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+.video-item:hover { border-color: var(--primary); }
+.video-info h3 { font-size: 15px; font-weight: 600; }
+.video-info p { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.video-stats { display: flex; gap: 12px; align-items: center; }
+.video-stats .tag { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.tag-new { background: var(--bg3); color: var(--text2); }
+.tag-known { background: var(--green-bg); color: var(--green); }
+.tag-unknown { background: var(--red-bg); color: var(--red); }
+.category-tag { padding: 2px 8px; border-radius: 4px; font-size: 11px; background: rgba(99,102,241,0.15); color: var(--primary); }
+
+/* Sentence list */
+.sentence-item { padding: 12px 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; font-size: 14px; line-height: 1.5; display: flex; align-items: flex-start; gap: 12px; }
+.sentence-text { flex: 1; }
+.sentence-translation { font-size: 13px; color: var(--text2); margin-top: 4px; font-style: italic; }
+.sentence-source { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.sentence-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.sentence-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.sentence-status-dot.known, .sentence-status-dot.mastered { background: var(--green); }
+.sentence-status-dot.unknown { background: var(--red); }
+.sentence-status-dot.new { background: var(--text3); }
+
+/* Review level indicator */
+.level-bar { display: flex; gap: 3px; margin-top: 8px; }
+.level-dot { width: 24px; height: 4px; border-radius: 2px; background: var(--bg3); }
+.level-dot.filled { background: var(--primary); }
+.level-dot.current { background: var(--amber); }
+
+/* Full play mode */
+.fullplay-sentence { padding: 10px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; border-left: 3px solid transparent; transition: all 0.2s; display: flex; align-items: flex-start; gap: 8px; }
+.fullplay-sentence:hover { background: var(--bg3); }
+.fullplay-sentence.active { background: rgba(99, 102, 241, 0.15); border-left-color: var(--primary); }
+.fullplay-sentence.active .fullplay-text { color: #38bdf8; }
+.fullplay-sentence.marked-unknown { background: rgba(239, 68, 68, 0.08); border-left-color: var(--red); }
+.fullplay-sentence.marked-unknown .sentence-status-dot { background: var(--red); }
+.fullplay-translation { font-size: 13px; color: var(--text3); margin-top: 4px; font-style: italic; padding-left: 52px; }
+.fullplay-time { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 36px; margin-top: 2px; }
+
+/* Empty state */
+.empty { text-align: center; padding: 60px 20px; color: var(--text3); }
+.empty-icon { font-size: 48px; margin-bottom: 16px; }
+.empty h3 { font-size: 18px; color: var(--text2); margin-bottom: 8px; }
+
+/* Loading */
+.loading { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 20px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; font-size: 14px; z-index: 1000; animation: slideUp 0.3s; }
+.toast.success { border-color: var(--green); }
+.toast.error { border-color: var(--red); }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* Progress bar */
+.progress-container { margin-bottom: 16px; }
+.progress-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text2); margin-bottom: 6px; }
+.progress-bar { height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.progress-fill.green { background: var(--green); }
+.progress-fill.blue { background: var(--primary); }
+.progress-fill.amber { background: var(--amber); }
+
+/* Delete button */
+.btn-delete { background: none; border: none; color: var(--text3); cursor: pointer; padding: 4px 8px; font-size: 16px; border-radius: 4px; }
+.btn-delete:hover { color: var(--red); background: var(--red-bg); }
+.btn-sent-delete { background:none; border:none; color:var(--text3); cursor:pointer; padding:2px 6px; font-size:16px; border-radius:4px; opacity:0; transition:opacity 0.15s; flex-shrink:0; }
+.sentence-item:hover .btn-sent-delete { opacity:1; }
+.btn-sent-delete:hover { color:var(--red); background:var(--red-bg); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* Paragraph group */
+.paragraph-group { margin-bottom: 24px; }
+.paragraph-label { font-size: 12px; color: var(--text3); margin-bottom: 8px; padding-left: 4px; }
+
+/* Modal */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 32px; max-width: 500px; width: 90%; }
+.modal h2 { font-size: 20px; margin-bottom: 16px; }
+.modal .btn-row { display: flex; gap: 12px; margin-top: 20px; justify-content: flex-end; }
+
+/* Tabs */
+.tab-container { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
+.tab-btn { padding: 10px 20px; border: none; background: none; color: var(--text3); font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* Chart grid */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.chart-card .card-title { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <h1><span>English</span> Master</h1>
+  </div>
+  <div class="nav-item active" onclick="showPage('dashboard')">
+    <span>Dashboard</span>
+  </div>
+  <div class="nav-item" onclick="showPage('videos')">
+    <span>콘텐츠</span>
+  </div>
+  <div class="nav-item" onclick="showPage('study')">
+    <span>학습하기</span>
+    <span class="nav-badge" id="badge-new">0</span>
+  </div>
+  <div class="nav-item" onclick="showPage('review-sentences')">
+    <span>문장 복습</span>
+    <span class="nav-badge red" id="badge-review-sentences">0</span>
+  </div>
+  <div class="nav-item" onclick="showPage('review-words')">
+    <span>단어 복습</span>
+    <span class="nav-badge red" id="badge-review-words">0</span>
+  </div>
+  <div class="nav-item" onclick="showPage('unknown-sentences')">
+    <span>모르는 문장</span>
+  </div>
+  <div class="nav-item" onclick="showPage('unknown-words')">
+    <span>모르는 단어</span>
+  </div>
+  <div class="nav-item" onclick="showPage('stats')">
+    <span>통계</span>
+  </div>
+  <div class="sidebar-categories" id="sidebar-categories">
+    <div class="cat-header">
+      <span>카테고리</span>
+      <button onclick="promptAddCategory()" title="카테고리 추가">+</button>
+    </div>
+    <div id="category-nav-list"></div>
+  </div>
+  <div class="sidebar-toggles">
+    <button class="toggle-btn" onclick="toggleVideo()" id="video-toggle-btn">영상 OFF</button>
+    <button class="toggle-btn" onclick="toggleTranslation()" id="trans-toggle-btn">해석 OFF</button>
+    <button class="toggle-btn on" onclick="toggleTTS()" id="tts-toggle-btn">음성 ON</button>
+    <select id="tts-voice-select" onchange="changeTTSVoice(this.value)" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;outline:none;">
+      <option value="">기본 음성</option>
+    </select>
+  </div>
+  <div class="sidebar-footer">Ebbinghaus Spaced Repetition</div>
+</nav>
+
+<!-- Main Content -->
+<div class="main">
+  <!-- YouTube Player -->
+  <div id="yt-container" style="display:none; background:var(--bg2); border-bottom:1px solid var(--border); padding:16px; text-align:center; flex-shrink:0;">
+    <div id="yt-player" style="margin:0 auto; border-radius:8px; overflow:hidden; display:inline-block;"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="page active" id="page-dashboard">
+    <h1 class="page-title">Dashboard</h1>
+    <div class="stats-grid" id="dashboard-stats"></div>
+    <div class="card">
+      <div class="card-title">빠른 시작</div>
+      <div style="display:flex; gap:12px; margin-top:12px; flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="alert('버튼 클릭됨!'); showPage('videos');">콘텐츠 추가</button>
+        <button class="btn btn-green" onclick="showPage('study')">학습 시작</button>
+        <button class="btn btn-outline" onclick="showPage('review-sentences')">문장 복습 <span id="quick-review-sent-count"></span></button>
+        <button class="btn btn-outline" onclick="showPage('review-words')">단어 복습 <span id="quick-review-word-count"></span></button>
+      </div>
+    </div>
+    <div id="dashboard-progress" style="margin-top: 24px;"></div>
+  </div>
+
+  <!-- Videos -->
+  <div class="page" id="page-videos">
+    <h1 class="page-title">콘텐츠</h1>
+    <div class="card" style="margin-bottom:24px;">
+      <div class="tab-container" style="margin:-20px -20px 16px -20px; padding:0 20px;">
+        <button class="tab-btn active" id="tab-youtube" onclick="switchContentTab('youtube')">YouTube</button>
+        <button class="tab-btn" id="tab-text" onclick="switchContentTab('text')">텍스트/기사</button>
+      </div>
+      <div id="content-tab-youtube">
+        <div style="display:flex;gap:12px;">
+          <input type="url" id="youtube-url" placeholder="YouTube URL을 붙여넣으세요..." onkeydown="if(event.key==='Enter')addVideo()">
+          <button class="btn btn-primary" onclick="addVideo()" id="btn-add-video">추가</button>
+        </div>
+      </div>
+      <div id="content-tab-text" style="display:none;">
+        <input type="text" id="text-content-title" placeholder="제목 (선택사항 - 비워두면 자동 생성)" style="margin-bottom:12px;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="btn btn-sm btn-primary" id="text-mode-paste" onclick="switchTextMode('paste')" style="font-size:12px;">텍스트</button>
+          <button class="btn btn-sm btn-outline" id="text-mode-url" onclick="switchTextMode('url')" style="font-size:12px;">URL</button>
+          <button class="btn btn-sm btn-outline" id="text-mode-file" onclick="switchTextMode('file')" style="font-size:12px;">파일</button>
+        </div>
+        <div id="text-panel-paste">
+          <textarea id="text-content-body" placeholder="영어 텍스트를 붙여넣으세요...&#10;&#10;기사, 신문, PDF 내용 등" style="width:100%;min-height:150px;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;resize:vertical;outline:none;font-family:inherit;"></textarea>
+        </div>
+        <div id="text-panel-url" style="display:none;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input type="url" id="text-content-url" placeholder="기사 URL을 붙여넣으세요 (예: https://bbc.com/news/...)" style="flex:1;" onkeydown="if(event.key==='Enter')fetchUrlPreview()">
+            <button class="btn btn-outline btn-sm" onclick="fetchUrlPreview()" id="btn-url-preview">가져오기</button>
+          </div>
+          <div id="url-preview" style="display:none;max-height:200px;overflow-y:auto;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text2);white-space:pre-wrap;word-break:break-word;"></div>
+        </div>
+        <div id="text-panel-file" style="display:none;">
+          <label for="text-content-file" style="display:block;padding:30px;border:2px dashed var(--border);border-radius:8px;text-align:center;cursor:pointer;color:var(--text3);font-size:13px;transition:border-color 0.2s;">
+            📂 파일을 선택하세요 (.txt, .pdf, .html)<br><span style="font-size:11px;color:var(--text3);">최대 16MB</span>
+            <input type="file" id="text-content-file" accept=".txt,.pdf,.html,.htm" style="display:none;" onchange="onFileSelected(this)">
+          </label>
+          <div id="file-info" style="display:none;margin-top:8px;font-size:12px;color:var(--text2);"></div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:12px;">
+          <select id="text-content-category" style="flex:1;">
+            <option value="">카테고리 선택 (선택사항)</option>
+          </select>
+          <button class="btn btn-primary" onclick="addTextContent()" id="btn-add-text">추가</button>
+        </div>
+      </div>
+    </div>
+    <div id="video-list"></div>
+  </div>
+
+  <!-- Study -->
+  <div class="page" id="page-study">
+    <h1 class="page-title">학습하기</h1>
+    <!-- Video selection list -->
+    <div id="study-select" style="margin-bottom:24px;">
+      <div id="study-video-list"></div>
+    </div>
+    <!-- Video detail / study landing -->
+    <div id="study-video-detail" style="display:none;">
+      <button class="btn btn-outline btn-sm" onclick="backToStudyList()" style="margin-bottom:16px;">&larr; 콘텐츠 목록으로</button>
+      <div id="study-video-header"></div>
+      <div id="study-video-sentences" style="margin-top:16px;"></div>
+    </div>
+    <!-- Sentence-by-sentence study area -->
+    <div id="study-area" style="display:none;">
+      <div class="study-progress"><div class="study-progress-bar" id="study-progress-bar"></div></div>
+      <div class="study-card">
+        <div class="study-meta" id="study-meta"></div>
+        <div class="study-sentence" id="study-sentence"></div>
+        <div class="study-translation" id="study-translation"></div>
+        <div class="word-selector" id="word-selector" style="display:none;"></div>
+        <div id="word-instruction" style="display:none; font-size:13px; color:var(--text3); margin:8px 0;">
+          모르는 단어를 클릭하세요. 완료되면 아래 버튼을 눌러주세요.
+        </div>
+        <div class="study-buttons" id="study-buttons">
+          <button class="btn btn-red" onclick="studyMark('unknown')">모르겠어요</button>
+          <button class="btn btn-green" onclick="studyMark('known')">알아요!</button>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:16px;">
+        <button class="btn btn-outline btn-sm" onclick="endStudy()">학습 종료</button>
+      </div>
+    </div>
+    <!-- Full video play area -->
+    <div id="study-fullplay" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 style="font-size:18px;">전체학습하기</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span style="font-size:12px; color:var(--text3);">R=모르는문장 | Y=아는문장 | Space=일시정지</span>
+          <button class="btn btn-primary btn-sm" onclick="toggleFullPlayPause()" id="fullplay-pause-btn">일시정지</button>
+          <button class="toggle-btn" onclick="toggleFullplayTranslation()" id="fullplay-trans-btn">해석 OFF</button>
+          <button class="btn btn-red btn-sm" onclick="endFullPlay()">종료</button>
+        </div>
+      </div>
+      <div id="fullplay-sentences" style="max-height:calc(100vh - 250px); overflow-y:auto; padding:8px;"></div>
+    </div>
+    <!-- Study complete -->
+    <div id="study-complete" style="display:none;" class="empty">
+      <div class="empty-icon">&#127881;</div>
+      <h3>학습 완료!</h3>
+      <p id="study-complete-msg"></p>
+      <button class="btn btn-primary" style="margin-top:16px;" onclick="showPage('review-sentences')">복습하러 가기</button>
+    </div>
+  </div>
+
+  <!-- Review -->
+  <div class="page" id="page-review">
+    <h1 class="page-title" id="review-page-title">복습하기</h1>
+    <div id="review-empty" class="empty" style="display:none;">
+      <div class="empty-icon">&#9996;</div>
+      <h3>복습할 항목이 없습니다!</h3>
+      <p>에빙하우스 기억곡선에 따라 복습 시간이 되면 알려드릴게요.</p>
+    </div>
+    <div id="review-area" style="display:none;">
+      <div class="study-progress"><div class="study-progress-bar" id="review-progress-bar"></div></div>
+      <div class="study-card">
+        <div class="study-meta" id="review-meta"></div>
+        <div class="level-bar" id="review-level-bar"></div>
+        <div class="study-sentence" id="review-sentence" style="cursor:pointer;" onclick="revealReview()">
+          클릭하여 확인
+        </div>
+        <div class="study-translation" id="review-translation"></div>
+        <div id="review-revealed" style="display:none;">
+          <div class="study-buttons">
+            <button class="btn btn-outline btn-sm" onclick="replayReviewItem()">&#9654; 다시 듣기</button>
+            <button class="btn btn-red" onclick="reviewMark(false)">잊어버렸어요</button>
+            <button class="btn btn-green" onclick="reviewMark(true)">기억나요!</button>
+          </div>
+        </div>
+        <div id="review-hidden" style="text-align:center;">
+          <button class="btn btn-primary" onclick="revealReview()">내용 확인하기</button>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:16px;">
+        <span id="review-count-text" style="font-size:13px; color:var(--text3);"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unknown Sentences -->
+  <div class="page" id="page-unknown-sentences">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h1 class="page-title" style="margin-bottom:0;">모르는 문장</h1>
+      <button class="toggle-btn" id="unknown-video-toggle-btn" onclick="toggleVideo()">영상 OFF</button>
+    </div>
+    <div id="unknown-sentences-list"></div>
+  </div>
+
+  <!-- Unknown Words -->
+  <div class="page" id="page-unknown-words">
+    <h1 class="page-title">모르는 단어</h1>
+    <div style="display:flex; gap:12px; margin-bottom:20px;">
+      <input type="text" id="add-word-input" placeholder="단어를 직접 추가할 수도 있어요..." onkeydown="if(event.key==='Enter')addWordManual()">
+      <button class="btn btn-primary btn-sm" onclick="addWordManual()">추가</button>
+      <button class="btn btn-green btn-sm" id="bulk-word-study-btn" onclick="startBulkWordStudy()">&#9654; 전체 학습</button>
+    </div>
+    <!-- Bulk word study card -->
+    <div id="bulk-word-study" style="display:none;">
+      <div class="study-card">
+        <div class="study-progress"><div class="study-progress-bar" id="word-study-progress"></div></div>
+        <div class="study-meta" id="word-study-meta"></div>
+        <div class="study-sentence" id="word-study-word" style="font-size:32px; font-weight:700; justify-content:center; cursor:pointer;" onclick="revealWordMeaning()"></div>
+        <div class="study-translation" id="word-study-meaning" style="display:none;"></div>
+        <div class="study-buttons" id="word-study-buttons" style="display:none;">
+          <button class="btn btn-red" onclick="processWordStudy(false)">&#10060; 모르겠음</button>
+          <button class="btn btn-green" onclick="processWordStudy(true)">&#9989; 알겠음</button>
+        </div>
+        <p style="color:var(--text3); font-size:12px; margin-top:12px;" id="word-study-hint">클릭하면 뜻이 보입니다</p>
+        <button class="btn btn-outline btn-sm" style="margin-top:16px;" onclick="endBulkWordStudy()">학습 종료</button>
+      </div>
+    </div>
+    <div id="unknown-words-list"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="page" id="page-stats">
+    <h1 class="page-title">학습 통계</h1>
+    <div class="stats-grid" id="stats-grid"></div>
+    <div class="chart-grid" id="stats-charts">
+      <div class="chart-card"><div class="card-title">문장 숙달 분포</div><canvas id="chart-mastery"></canvas></div>
+      <div class="chart-card"><div class="card-title">단어 숙달 분포</div><canvas id="chart-words"></canvas></div>
+      <div class="chart-card"><div class="card-title">일별 학습 추이 (30일)</div><canvas id="chart-daily"></canvas></div>
+      <div class="chart-card"><div class="card-title">SRS 레벨 분포</div><canvas id="chart-srs"></canvas></div>
+    </div>
+    <div id="stats-details" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+<!-- Modal for category -->
+<div class="modal-overlay" id="modal-category">
+  <div class="modal">
+    <h2 id="modal-cat-title">카테고리 추가</h2>
+    <input type="text" id="modal-cat-input" placeholder="카테고리 이름">
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closeCategoryModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveCategoryModal()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script>
+window.onerror = function(msg, url, line, col, err) {
+  document.title = 'ERR:' + line + ':' + msg;
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:99999;font-size:14px;white-space:pre-wrap;max-height:200px;overflow:auto;';
+  d.textContent = 'JS Error line ' + line + ' col ' + col + ': ' + msg + '\nURL: ' + url + (err && err.stack ? '\nStack: ' + err.stack : '');
+  document.body.appendChild(d);
+};
+window.addEventListener('unhandledrejection', function(e) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c00;color:white;padding:10px;z-index:99999;font-size:14px;white-space:pre-wrap;max-height:200px;overflow:auto;';
+  d.textContent = 'Promise Error: ' + (e.reason ? (e.reason.message || e.reason) : 'unknown') + (e.reason && e.reason.stack ? '\n' + e.reason.stack : '');
+  document.body.appendChild(d);
+});
+// ── State ──────────────────────────────────────────────
+let currentPage = 'dashboard';
+let studySentences = [];
+let studyIndex = 0;
+let studyKnown = 0;
+let studyUnknown = 0;
+let studyCurrentVideoId = null;
+let studyCurrentVideoInfo = null;
+let reviewItems = [];
+let reviewIndex = 0;
+let reviewRevealed = false;
+let currentReviewType = 'sentence';
+let categories = [];
+let currentCategoryFilter = null;
+let textFullPlayMode = false;
+
+// ── TTS State ────────────────────────────────────────
+let ttsEnabled = localStorage.getItem('ttsEnabled') !== 'false';
+let selectedVoiceName = localStorage.getItem('ttsVoice') || '';
+
+// ── Full Play State ───────────────────────────────────
+let fullPlayActive = false;
+let fullPlayPaused = false;
+let fullPlaySentences = [];
+let fullPlayTimer = null;
+let fullPlayCurrentIdx = -1;
+let fullplayTransEnabled = localStorage.getItem('fullplayTransEnabled') === 'true';
+
+// ── Karaoke State ─────────────────────────────────────
+let karaokeTimers = [];
+
+// ── YouTube Player ─────────────────────────────────────
+let ytPlayer = null;
+let ytReady = false;
+let videoEnabled = localStorage.getItem('videoEnabled') === 'true';
+let translationEnabled = localStorage.getItem('translationEnabled') === 'true';
+let currentYTVideoId = null;
+let sentenceEndTimer = null;
+let translationCache = {};
+
+function onYouTubeIframeAPIReady() { ytReady = true; }
+
+function initPlayer(ytVideoId) {
+  if (!ytVideoId) return;
+  if (currentYTVideoId === ytVideoId && ytPlayer && ytPlayer.seekTo) return;
+  currentYTVideoId = ytVideoId;
+  // Destroy existing player properly
+  if (ytPlayer && ytPlayer.destroy) {
+    try { ytPlayer.destroy(); } catch(e) {}
+    ytPlayer = null;
+  }
+  // Ensure yt-player div exists (recreate if needed after destroy)
+  var container = document.getElementById('yt-container');
+  var playerEl = document.getElementById('yt-player');
+  if (!playerEl && container) {
+    var div = document.createElement('div');
+    div.id = 'yt-player';
+    div.style.cssText = 'margin:0 auto; border-radius:8px; overflow:hidden; display:inline-block;';
+    container.appendChild(div);
+  }
+  try {
+    ytPlayer = new YT.Player('yt-player', {
+      height: '225', width: '400', videoId: ytVideoId,
+      playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1 },
+      events: { onReady: function() { ytReady = true; } }
+    });
+  } catch(e) {
+    console.error('YT Player init error:', e);
+    ytPlayer = null;
+  }
+}
+
+// ── Karaoke System ────────────────────────────────────
+
+function estimateWordTimings(text, startTime, endTime) {
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  if (!words.length) return [];
+  const totalDuration = endTime - startTime;
+  const totalChars = words.reduce((sum, w) => sum + w.length, 0);
+  let currentTime = startTime;
+  return words.map(word => {
+    const wordDuration = (word.length / totalChars) * totalDuration;
+    const timing = { word, start: currentTime, end: currentTime + wordDuration };
+    currentTime += wordDuration;
+    return timing;
+  });
+}
+
+function renderKaraokeText(text, uid) {
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  return words.map((word, i) =>
+    `<span class="karaoke-word" id="kw-${uid}-${i}">${word}</span>`
+  ).join(' ');
+}
+
+function clearKaraokeTimers() {
+  karaokeTimers.forEach(t => clearTimeout(t));
+  karaokeTimers = [];
+  document.querySelectorAll('.karaoke-word.highlighted, .karaoke-word.spoken').forEach(el => {
+    el.classList.remove('highlighted', 'spoken');
+  });
+}
+
+function startKaraoke(uid, text, startTime, endTime) {
+  clearKaraokeTimers();
+  const wordTimings = estimateWordTimings(text, startTime, endTime);
+  wordTimings.forEach((wt, idx) => {
+    const delay = (wt.start - startTime) * 1000;
+    const t = setTimeout(() => {
+      if (idx > 0) {
+        const prev = document.getElementById(`kw-${uid}-${idx - 1}`);
+        if (prev) { prev.classList.remove('highlighted'); prev.classList.add('spoken'); }
+      }
+      const el = document.getElementById(`kw-${uid}-${idx}`);
+      if (el) el.classList.add('highlighted');
+    }, delay);
+    karaokeTimers.push(t);
+  });
+  // Clear all at end
+  const endT = setTimeout(() => {
+    document.querySelectorAll('.karaoke-word').forEach(el => {
+      el.classList.remove('highlighted', 'spoken');
+    });
+  }, (endTime - startTime) * 1000 + 300);
+  karaokeTimers.push(endT);
+}
+
+// ── Playback ──────────────────────────────────────────
+
+function playFromTo(ytVideoId, startTime, endTime) {
+  if (!videoEnabled) {
+    // No video, karaoke still runs via setTimeout timings
+    return;
+  }
+  if (!ytVideoId) return;
+  clearTimeout(sentenceEndTimer);
+  initPlayer(ytVideoId);
+  const doSeek = () => {
+    if (ytPlayer && ytPlayer.seekTo) {
+      ytPlayer.seekTo(startTime, true);
+      ytPlayer.playVideo();
+      if (endTime > startTime) {
+        const dur = (endTime - startTime) * 1000;
+        sentenceEndTimer = setTimeout(() => {
+          if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+        }, dur + 300);
+      }
+    } else {
+      setTimeout(doSeek, 500);
+    }
+  };
+  setTimeout(doSeek, 300);
+}
+
+function playSentenceWithKaraoke(uid, text, ytVideoId, startTime, endTime) {
+  playFromTo(ytVideoId, startTime, endTime);
+  startKaraoke(uid, text, startTime, endTime);
+}
+
+function playSentence(ytVideoId, start, end) {
+  if (!videoEnabled) { videoEnabled = true; localStorage.setItem('videoEnabled','true'); updateVideoUI(); }
+  playFromTo(ytVideoId, start, end);
+}
+
+function toggleVideo() {
+  videoEnabled = !videoEnabled;
+  localStorage.setItem('videoEnabled', videoEnabled);
+  updateVideoUI();
+}
+
+function updateVideoUI() {
+  const container = document.getElementById('yt-container');
+  const btn = document.getElementById('video-toggle-btn');
+  const btn2 = document.getElementById('unknown-video-toggle-btn');
+  if (videoEnabled) {
+    container.style.display = 'block';
+    if (btn) { btn.textContent = '영상 ON'; btn.classList.add('on'); }
+    if (btn2) { btn2.textContent = '영상 ON'; btn2.classList.add('on'); }
+  } else {
+    container.style.display = 'none';
+    if (btn) { btn.textContent = '영상 OFF'; btn.classList.remove('on'); }
+    if (btn2) { btn2.textContent = '영상 OFF'; btn2.classList.remove('on'); }
+    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+    clearTimeout(sentenceEndTimer);
+  }
+}
+
+function toggleTranslation() {
+  translationEnabled = !translationEnabled;
+  localStorage.setItem('translationEnabled', translationEnabled);
+  updateTranslationUI();
+}
+
+function updateTranslationUI() {
+  const btn = document.getElementById('trans-toggle-btn');
+  if (translationEnabled) {
+    btn.textContent = '해석 ON';
+    btn.classList.add('on');
+  } else {
+    btn.textContent = '해석 OFF';
+    btn.classList.remove('on');
+  }
+  document.querySelectorAll('.translation-text').forEach(el => {
+    el.style.display = translationEnabled ? 'block' : 'none';
+  });
+}
+
+function toggleTTS() {
+  ttsEnabled = !ttsEnabled;
+  localStorage.setItem('ttsEnabled', ttsEnabled);
+  var btn = document.getElementById('tts-toggle-btn');
+  btn.textContent = ttsEnabled ? '음성 ON' : '음성 OFF';
+  btn.classList.toggle('on', ttsEnabled);
+  if (!ttsEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function changeTTSVoice(name) {
+  selectedVoiceName = name;
+  localStorage.setItem('ttsVoice', name);
+}
+
+function loadVoices() {
+  if (!window.speechSynthesis) return;
+  var voices = window.speechSynthesis.getVoices().filter(function(v) { return v.lang.startsWith('en'); });
+  var sel = document.getElementById('tts-voice-select');
+  if (!sel || !voices.length) return;
+  sel.innerHTML = '<option value="">기본 음성</option>';
+  voices.forEach(function(v) {
+    var opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = v.name + (v.lang !== 'en-US' ? ' (' + v.lang + ')' : '');
+    if (v.name === selectedVoiceName) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+async function fetchTranslation(sentenceId) {
+  if (translationCache[sentenceId]) return translationCache[sentenceId];
+  try {
+    const data = await api(`/api/translate/${sentenceId}`);
+    if (data.translation) {
+      translationCache[sentenceId] = data.translation;
+      return data.translation;
+    }
+  } catch(e) {}
+  return '';
+}
+
+async function showTranslation(el, sentenceId) {
+  if (!el) return;
+  if (!translationEnabled) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.textContent = '번역 중...';
+  const trans = await fetchTranslation(sentenceId);
+  el.textContent = trans || '(번역 불가)';
+}
+
+updateVideoUI();
+updateTranslationUI();
+
+// ── API helpers ────────────────────────────────────────
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const text = await res.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch(e) { console.error('API parse error for', url, ':', text.slice(0, 200)); throw e; }
+}
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ── Navigation ─────────────────────────────────────────
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  // review-sentences and review-words both use page-review
+  var pageEl = (page === 'review-sentences' || page === 'review-words')
+    ? 'page-review' : 'page-' + page;
+  document.getElementById(pageEl).classList.add('active');
+  var pages = ['dashboard','videos','study','review-sentences','review-words','unknown-sentences','unknown-words','stats'];
+  document.querySelectorAll('.nav-item').forEach(function(n, i) {
+    n.classList.toggle('active', pages[i] === page);
+  });
+  // Clean up full play if leaving study
+  if (page !== 'study' && fullPlayActive) endFullPlay();
+  loadPage(page);
+}
+
+async function loadPage(page) {
+  if (page === 'dashboard') loadDashboard();
+  else if (page === 'videos') loadVideos();
+  else if (page === 'study') loadStudySelect();
+  else if (page === 'review-sentences') loadReview('sentence');
+  else if (page === 'review-words') loadReview('word');
+  else if (page === 'unknown-sentences') loadUnknownSentences();
+  else if (page === 'unknown-words') loadUnknownWords();
+  else if (page === 'stats') loadStats();
+}
+
+// ── Categories ─────────────────────────────────────────
+async function loadCategories() {
+  categories = await api('/api/categories');
+  const el = document.getElementById('category-nav-list');
+  el.innerHTML = categories.map(c => `
+    <div class="cat-nav-item ${currentCategoryFilter === c.id ? 'active' : ''}" onclick="filterByCategory(${c.id})">
+      <span>${c.name}</span>
+      <button onclick="event.stopPropagation();deleteCategory(${c.id})" class="btn-delete" style="margin-left:auto; font-size:12px; padding:2px 4px;" title="삭제">&times;</button>
+    </div>
+  `).join('') + (categories.length ? `
+    <div class="cat-nav-item ${currentCategoryFilter === null ? '' : (currentCategoryFilter === 0 ? 'active' : '')}" onclick="filterByCategory(0)" style="font-size:12px; color:var(--text3);">미분류</div>
+    <div class="cat-nav-item" onclick="filterByCategory(null)" style="font-size:12px; color:var(--text3);">전체 보기</div>
+  ` : '');
+}
+
+function filterByCategory(catId) {
+  currentCategoryFilter = catId;
+  loadCategories();
+  if (currentPage === 'videos') loadVideos();
+  if (currentPage === 'study') loadStudySelect();
+}
+
+function promptAddCategory() {
+  document.getElementById('modal-cat-title').textContent = '카테고리 추가';
+  document.getElementById('modal-cat-input').value = '';
+  document.getElementById('modal-category').classList.add('show');
+  document.getElementById('modal-cat-input').focus();
+}
+
+function closeCategoryModal() {
+  document.getElementById('modal-category').classList.remove('show');
+}
+
+async function saveCategoryModal() {
+  const name = document.getElementById('modal-cat-input').value.trim();
+  if (!name) return;
+  await api('/api/categories', { method: 'POST', body: { name } });
+  closeCategoryModal();
+  toast(`"${name}" 카테고리 추가됨`);
+  loadCategories();
+}
+
+async function deleteCategory(catId) {
+  if (!confirm('이 카테고리를 삭제하시겠습니까? (영상은 삭제되지 않습니다)')) return;
+  await api(`/api/categories/${catId}`, { method: 'DELETE' });
+  if (currentCategoryFilter === catId) currentCategoryFilter = null;
+  toast('카테고리 삭제됨');
+  loadCategories();
+  if (currentPage === 'videos') loadVideos();
+}
+
+async function setVideoCategory(videoId, catId) {
+  await api(`/api/videos/${videoId}/category`, { method: 'PUT', body: { category_id: catId || null } });
+  loadVideos();
+  loadCategories();
+}
+
+// ── Dashboard ──────────────────────────────────────────
+async function loadDashboard() {
+  var stats = await api('/api/stats');
+  var sentDue = stats.sentence_due_reviews || 0;
+  var wordDue = stats.word_due_reviews || 0;
+  document.getElementById('dashboard-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-number blue">${stats.total_videos}</div><div class="stat-label">등록 콘텐츠</div></div>
+    <div class="stat-card"><div class="stat-number">${stats.total_sentences}</div><div class="stat-label">전체 문장</div></div>
+    <div class="stat-card"><div class="stat-number green">${stats.known_sentences + stats.mastered_sentences}</div><div class="stat-label">아는 문장</div></div>
+    <div class="stat-card"><div class="stat-number red">${stats.unknown_sentences}</div><div class="stat-label">모르는 문장</div></div>
+    <div class="stat-card"><div class="stat-number amber">${stats.due_reviews}</div><div class="stat-label">복습 대기</div></div>
+    <div class="stat-card"><div class="stat-number blue">${stats.new_sentences}</div><div class="stat-label">미학습</div></div>
+  `;
+  document.getElementById('badge-new').textContent = stats.new_sentences;
+  document.getElementById('badge-review-sentences').textContent = sentDue;
+  document.getElementById('badge-review-words').textContent = wordDue;
+  document.getElementById('quick-review-sent-count').textContent = sentDue > 0 ? '(' + sentDue + ')' : '';
+  document.getElementById('quick-review-word-count').textContent = wordDue > 0 ? '(' + wordDue + ')' : '';
+
+  const total = stats.total_sentences || 1;
+  const knownPct = Math.round((stats.known_sentences + stats.mastered_sentences) / total * 100);
+  const studiedPct = Math.round(stats.studied_sentences / total * 100);
+  document.getElementById('dashboard-progress').innerHTML = `
+    <div class="card">
+      <div class="card-title">전체 진행률</div>
+      <div class="progress-container" style="margin-top:16px;">
+        <div class="progress-label"><span>학습 완료</span><span>${studiedPct}% (${stats.studied_sentences}/${stats.total_sentences})</span></div>
+        <div class="progress-bar"><div class="progress-fill blue" style="width:${studiedPct}%"></div></div>
+      </div>
+      <div class="progress-container">
+        <div class="progress-label"><span>완벽히 아는 문장</span><span>${knownPct}%</span></div>
+        <div class="progress-bar"><div class="progress-fill green" style="width:${knownPct}%"></div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Videos ─────────────────────────────────────────────
+async function loadVideos() {
+  let url = '/api/videos';
+  if (currentCategoryFilter !== null) url += `?category_id=${currentCategoryFilter}`;
+  const videos = await api(url);
+  const el = document.getElementById('video-list');
+  if (!videos.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">&#128218;</div><h3>아직 등록된 콘텐츠가 없습니다</h3><p>위에서 YouTube URL이나 텍스트를 추가해보세요!</p></div>';
+    return;
+  }
+  var catOptions = categories.map(function(c) { return '<option value="' + c.id + '">' + c.name + '</option>'; }).join('');
+  el.innerHTML = videos.map(function(v) {
+    var icon = v.content_type === 'text' ? '\uD83D\uDCC4' : '\uD83C\uDFAC';
+    return `
+    <div class="video-item">
+      <div class="video-info" onclick="openVideoStudy(${v.id})">
+        <h3>${icon} ${v.title || 'Untitled'}
+          ${v.category_name ? `<span class="category-tag">${v.category_name}</span>` : ''}
+        </h3>
+        <p>${v.total_sentences || 0}문장 | 추가: ${(v.created_at || '').slice(0, 10)}</p>
+      </div>
+      <div class="video-stats">
+        ${v.new_count ? `<span class="tag tag-new">${v.new_count} 미학습</span>` : ''}
+        ${v.known_count ? `<span class="tag tag-known">${v.known_count} 암</span>` : ''}
+        ${v.unknown_count ? `<span class="tag tag-unknown">${v.unknown_count} 모름</span>` : ''}
+        <select onchange="setVideoCategory(${v.id}, this.value)" style="font-size:11px;">
+          <option value="">미분류</option>
+          ${catOptions}
+        </select>
+        <button class="btn-delete" onclick="event.stopPropagation();deleteVideo(${v.id})" title="삭제">&#128465;</button>
+      </div>
+    </div>
+  `;
+  }).join('');
+  // Set selected categories after rendering
+  videos.forEach(function(v) {
+    if (v.category_id) {
+      var sel = el.querySelector('select[onchange*="setVideoCategory(' + v.id + ',"]');
+      if (sel) sel.value = v.category_id;
+    }
+  });
+}
+
+async function addVideo() {
+  const input = document.getElementById('youtube-url');
+  const url = input.value.trim();
+  if (!url) return;
+  const btn = document.getElementById('btn-add-video');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>';
+  try {
+    const result = await api('/api/videos', { method: 'POST', body: { url } });
+    if (result.error) {
+      toast(result.error, 'error');
+    } else {
+      toast(result.message);
+      input.value = '';
+      loadVideos();
+      loadDashboard();
+    }
+  } catch (e) {
+    toast('오류가 발생했습니다', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '추가';
+  }
+}
+
+async function deleteVideo(id) {
+  if (!confirm('이 콘텐츠와 모든 학습 데이터를 삭제하시겠습니까?')) return;
+  await api(`/api/videos/${id}`, { method: 'DELETE' });
+  toast('콘텐츠가 삭제되었습니다');
+  loadVideos();
+}
+
+async function deleteContent(videoId) {
+  if (!confirm('이 콘텐츠와 모든 문장/학습 데이터를 삭제하시겠습니까?')) return;
+  await api(`/api/videos/${videoId}`, { method: 'DELETE' });
+  toast('콘텐츠가 삭제되었습니다');
+  backToStudyList();
+  loadVideos();
+  loadStats();
+}
+
+async function deleteSentence(sentenceId, videoId) {
+  if (!confirm('이 문장을 삭제하시겠습니까?')) return;
+  await api(`/api/sentences/${sentenceId}`, { method: 'DELETE' });
+  toast('문장이 삭제되었습니다');
+  openVideoStudy(videoId);
+  loadStats();
+}
+
+// ── Study: Video Selection ────────────────────────────
+async function loadStudySelect() {
+  document.getElementById('study-area').style.display = 'none';
+  document.getElementById('study-fullplay').style.display = 'none';
+  document.getElementById('study-complete').style.display = 'none';
+  document.getElementById('study-video-detail').style.display = 'none';
+  document.getElementById('study-select').style.display = 'block';
+
+  let url = '/api/videos';
+  if (currentCategoryFilter !== null) url += `?category_id=${currentCategoryFilter}`;
+  const videos = await api(url);
+  const el = document.getElementById('study-video-list');
+
+  if (!videos.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">&#9989;</div><h3>등록된 콘텐츠가 없습니다</h3><p>콘텐츠를 추가해주세요.</p></div>';
+    return;
+  }
+
+  el.innerHTML = videos.map(function(v) {
+    var total = v.total_sentences || 0;
+    var knownPct = total ? Math.round(((v.known_count||0) + (v.mastered_count||0)) / total * 100) : 0;
+    var icon = v.content_type === 'text' ? '\uD83D\uDCC4' : '\uD83C\uDFAC';
+    return `
+    <div class="video-item" onclick="openVideoStudy(${v.id})">
+      <div class="video-info">
+        <h3>${icon} ${v.title || 'Untitled'}
+          ${v.category_name ? `<span class="category-tag">${v.category_name}</span>` : ''}
+        </h3>
+        <p>${total}문장 | 진행률 ${knownPct}%</p>
+      </div>
+      <div class="video-stats">
+        ${v.new_count ? `<span class="tag tag-new">${v.new_count} 미학습</span>` : ''}
+        ${v.unknown_count ? `<span class="tag tag-unknown">${v.unknown_count} 모름</span>` : ''}
+        ${!v.new_count && !v.unknown_count ? `<span class="tag tag-known">완료</span>` : ''}
+      </div>
+    </div>
+  `;}).join('');
+}
+
+// ── Study: Video Detail ───────────────────────────────
+async function openVideoStudy(videoId) {
+  studyCurrentVideoId = videoId;
+  document.getElementById('study-select').style.display = 'none';
+  document.getElementById('study-video-detail').style.display = 'block';
+
+  var results = await Promise.all([
+    api('/api/videos/' + videoId + '/info'),
+    api('/api/videos/' + videoId + '/sentences')
+  ]);
+  var videoInfo = results[0];
+  var sentences = results[1];
+  studyCurrentVideoInfo = videoInfo;
+  var isText = videoInfo.content_type === 'text';
+
+  var total = sentences.length;
+  var known = sentences.filter(function(s) { return s.status === 'known' || s.status === 'mastered'; }).length;
+  var unknown = sentences.filter(function(s) { return s.status === 'unknown'; }).length;
+  var newCount = sentences.filter(function(s) { return s.status === 'new'; }).length;
+
+  document.getElementById('study-video-header').innerHTML = `
+    <div class="card">
+      <h2 style="font-size:18px; margin-bottom:12px;">${isText ? '\uD83D\uDCC4' : '\uD83C\uDFAC'} ${videoInfo.title || 'Untitled'}</h2>
+      <div style="display:flex; gap:16px; margin-bottom:16px; font-size:14px; color:var(--text2);">
+        <span>전체: ${total}</span>
+        <span style="color:var(--green);">아는 문장: ${known}</span>
+        <span style="color:var(--red);">모르는 문장: ${unknown}</span>
+        <span>미학습: ${newCount}</span>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn-primary" onclick="startFullVideoPlay(${videoId})">전체학습하기</button>
+        ${newCount > 0 ? `<button class="btn btn-green" onclick="startStudyVideo(${videoId})">문장별학습하기 (${newCount})</button>` : ''}
+        ${unknown > 0 ? `<button class="btn btn-outline" onclick="startStudyUnknown(${videoId})">모르는 문장 복습 (${unknown})</button>` : ''}
+        <button class="btn btn-outline" onclick="deleteContent(${videoId})" style="margin-left:auto; color:var(--red); border-color:var(--red);">🗑️ 콘텐츠 삭제</button>
+      </div>
+    </div>
+  `;
+
+  // Render all sentences grouped by paragraph
+  var html = '';
+  var currentPara = -1;
+  sentences.forEach(function(s) {
+    if (s.paragraph_idx !== currentPara) {
+      if (currentPara >= 0) html += '</div>';
+      currentPara = s.paragraph_idx;
+      html += '<div class="paragraph-group"><div class="paragraph-label">Paragraph ' + (currentPara + 1) + '</div>';
+    }
+    var timeLabel = s.start_time ? formatTime(s.start_time) : '';
+    html += '<div class="sentence-item" style="cursor:pointer;" data-ytid="' + (s.youtube_video_id||'') + '" data-start="' + (s.start_time||0) + '" data-end="' + (s.end_time||0) + '" data-sid="' + s.id + '" data-text="' + s.text.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '">'
+      + '<div class="sentence-status-dot ' + s.status + '"></div>'
+      + '<div class="sentence-text" id="detail-sent-' + s.id + '">' + s.text + '</div>'
+      + (timeLabel ? '<span style="font-size:11px; color:var(--text3);">' + timeLabel + '</span>' : '')
+      + '<button class="btn-sent-delete" data-delete-sid="' + s.id + '" title="문장 삭제">×</button>'
+      + '</div>';
+  });
+  if (currentPara >= 0) html += '</div>';
+  document.getElementById('study-video-sentences').innerHTML = html;
+}
+
+// Event delegation for sentence items
+document.getElementById('study-video-sentences').addEventListener('click', function(e) {
+  // Handle sentence delete button
+  var delBtn = e.target.closest('.btn-sent-delete');
+  if (delBtn) {
+    e.stopPropagation();
+    var sid = delBtn.dataset.deleteSid;
+    if (sid && studyCurrentVideoInfo) {
+      deleteSentence(parseInt(sid), studyCurrentVideoInfo.id);
+    }
+    return;
+  }
+  var item = e.target.closest('.sentence-item');
+  if (!item) return;
+  var ytVideoId = item.dataset.ytid;
+  var start = parseFloat(item.dataset.start);
+  var end = parseFloat(item.dataset.end);
+  var uid = item.dataset.sid;
+  var text = item.dataset.text;
+  var textEl = item.querySelector('.sentence-text');
+  textEl.innerHTML = renderKaraokeText(text, 'det-' + uid);
+  if (ytVideoId && start) {
+    playSentence(ytVideoId, start, end);
+    startKaraoke('det-' + uid, text, start, end);
+  } else {
+    speakText(text);
+  }
+});
+
+function backToStudyList() {
+  document.getElementById('study-video-detail').style.display = 'none';
+  loadStudySelect();
+}
+
+// ── Study: Sentence-by-Sentence ───────────────────────
+async function startStudyVideo(videoId) {
+  studyCurrentVideoId = videoId;
+  const sentences = await api(`/api/study/sentences?video_id=${videoId}`);
+  beginStudy(sentences);
+}
+
+async function startStudyUnknown(videoId) {
+  studyCurrentVideoId = videoId;
+  const allSentences = await api(`/api/videos/${videoId}/sentences`);
+  const unknowns = allSentences.filter(s => s.status === 'unknown');
+  if (!unknowns.length) { toast('모르는 문장이 없습니다'); return; }
+  beginStudy(unknowns);
+}
+
+function beginStudy(sentences) {
+  if (!sentences.length) {
+    document.getElementById('study-select').style.display = 'none';
+    document.getElementById('study-video-detail').style.display = 'none';
+    document.getElementById('study-complete').style.display = 'block';
+    document.getElementById('study-complete-msg').textContent = '학습할 문장이 없습니다.';
+    return;
+  }
+  studySentences = sentences;
+  studyIndex = 0;
+  studyKnown = 0;
+  studyUnknown = 0;
+  document.getElementById('study-select').style.display = 'none';
+  document.getElementById('study-video-detail').style.display = 'none';
+  document.getElementById('study-area').style.display = 'block';
+  document.getElementById('study-complete').style.display = 'none';
+  showStudySentence();
+}
+
+function showStudySentence() {
+  if (studyIndex >= studySentences.length) {
+    finishStudy();
+    return;
+  }
+  const s = studySentences[studyIndex];
+  const uid = 'study-' + s.id;
+  const pct = Math.round(studyIndex / studySentences.length * 100);
+  document.getElementById('study-progress-bar').style.width = pct + '%';
+  document.getElementById('study-meta').textContent = `문장 ${studyIndex + 1} / ${studySentences.length} | 단락 ${s.paragraph_idx + 1}`;
+
+  // Render karaoke text
+  document.getElementById('study-sentence').innerHTML = renderKaraokeText(s.text, uid);
+
+  // Translation
+  const transEl = document.getElementById('study-translation');
+  transEl.textContent = '';
+  transEl.className = 'study-translation translation-text';
+  if (translationEnabled) {
+    showTranslation(transEl, s.id);
+  } else {
+    transEl.style.display = 'none';
+  }
+
+  document.getElementById('word-selector').style.display = 'none';
+  document.getElementById('word-instruction').style.display = 'none';
+  document.getElementById('study-buttons').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="replayStudySentence()">&#9654; 다시 듣기</button>
+    <button class="btn btn-red" onclick="studyMark('unknown')">모르겠어요</button>
+    <button class="btn btn-green" onclick="studyMark('known')">알아요!</button>
+  `;
+
+  // Auto-play with karaoke or TTS
+  if (s.youtube_video_id && s.start_time) {
+    playFromTo(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
+    startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+  } else {
+    speakText(s.text);
+  }
+}
+
+function replayStudySentence() {
+  var s = studySentences[studyIndex];
+  if (!s) return;
+  var uid = 'study-' + s.id;
+  document.getElementById('study-sentence').innerHTML = renderKaraokeText(s.text, uid);
+  if (s.youtube_video_id && s.start_time) {
+    playSentence(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
+    startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+  } else {
+    speakText(s.text);
+  }
+}
+
+async function studyMark(status) {
+  const s = studySentences[studyIndex];
+
+  if (status === 'unknown') {
+    const words = s.text.replace(/[^a-zA-Z'\- ]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+    const unique = [...new Set(words.map(w => w.toLowerCase()))];
+    document.getElementById('word-selector').style.display = 'flex';
+    document.getElementById('word-selector').innerHTML = unique.map(function(w) {
+      return '<span class="word-chip">' + w + '</span>';
+    }).join('');
+    document.querySelectorAll('#word-selector .word-chip').forEach(function(chip) {
+      chip.addEventListener('click', function() { this.classList.toggle('selected'); });
+    });
+    document.getElementById('word-instruction').style.display = 'block';
+    document.getElementById('study-buttons').innerHTML = `
+      <button class="btn btn-outline" onclick="submitUnknown(${s.id})">모르는 단어 선택 완료</button>
+    `;
+    return;
+  }
+
+  await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'known' } });
+  studyKnown++;
+  studyIndex++;
+  showStudySentence();
+}
+
+function toggleWord(el) {
+  el.classList.toggle('selected');
+}
+
+async function submitUnknown(sentenceId) {
+  await api('/api/study/mark', { method: 'POST', body: { sentence_id: sentenceId, status: 'unknown' } });
+  const selected = document.querySelectorAll('.word-chip.selected');
+  for (const chip of selected) {
+    await api('/api/words/add', { method: 'POST', body: { word: chip.textContent } });
+  }
+  studyUnknown++;
+  studyIndex++;
+  showStudySentence();
+}
+
+function finishStudy() {
+  document.getElementById('study-area').style.display = 'none';
+  document.getElementById('study-complete').style.display = 'block';
+  document.getElementById('study-complete-msg').textContent =
+    `${studySentences.length}문장 학습 완료! 아는 문장: ${studyKnown}, 모르는 문장: ${studyUnknown}`;
+  loadDashboard();
+}
+
+function endStudy() {
+  clearKaraokeTimers();
+  document.getElementById('study-area').style.display = 'none';
+  if (studyCurrentVideoId) {
+    openVideoStudy(studyCurrentVideoId);
+  } else {
+    loadStudySelect();
+  }
+}
+
+// ── Study: Full Video Play ────────────────────────────
+async function startFullVideoPlay(videoId) {
+  var results = await Promise.all([
+    api('/api/videos/' + videoId + '/info'),
+    api('/api/videos/' + videoId + '/sentences')
+  ]);
+  var videoInfo = results[0];
+  var sentences = results[1];
+  var isText = videoInfo.content_type === 'text';
+
+  if (!sentences.length) { toast('문장이 없습니다', 'error'); return; }
+
+  fullPlaySentences = sentences;
+  fullPlayActive = true;
+  fullPlayCurrentIdx = -1;
+  textFullPlayMode = isText;
+
+  document.getElementById('study-select').style.display = 'none';
+  document.getElementById('study-video-detail').style.display = 'none';
+  document.getElementById('study-area').style.display = 'none';
+  document.getElementById('study-fullplay').style.display = 'block';
+
+  var ftBtn = document.getElementById('fullplay-trans-btn');
+  if (fullplayTransEnabled) { ftBtn.textContent = '해석 ON'; ftBtn.classList.add('active'); }
+  else { ftBtn.textContent = '해석 OFF'; ftBtn.classList.remove('active'); }
+
+  var html = '';
+  var currentPara = -1;
+  sentences.forEach(function(s, idx) {
+    if (s.paragraph_idx !== currentPara) {
+      if (currentPara >= 0) html += '</div>';
+      currentPara = s.paragraph_idx;
+      html += '<div class="paragraph-group"><div class="paragraph-label">Paragraph ' + (currentPara + 1) + '</div>';
+    }
+    var unknownClass = s.status === 'unknown' ? ' marked-unknown' : '';
+    var timeLabel = s.start_time ? formatTime(s.start_time) : '';
+    html += `
+      <div class="fullplay-sentence${unknownClass}" id="fullplay-s-${idx}" onclick="toggleFullplaySentenceUnknown(${idx}, event)">
+        <span class="fullplay-time">${timeLabel}</span>
+        <span class="sentence-status-dot ${s.status}" style="margin-top:6px;" id="fullplay-dot-${idx}"></span>
+        <span class="fullplay-text" id="fullplay-text-${idx}">${s.text}</span>
+      </div>
+      <div class="fullplay-translation" id="fullplay-trans-${idx}" style="display:${fullplayTransEnabled ? 'block' : 'none'}"></div>
+    `;
+  });
+  if (currentPara >= 0) html += '</div>';
+  document.getElementById('fullplay-sentences').innerHTML = html;
+
+  if (fullplayTransEnabled) loadFullplayTranslations();
+
+  if (isText) {
+    // Text content: use TTS sequential play
+    startTextSequentialPlay();
+  } else {
+    // YouTube: enable video and start playing
+    videoEnabled = true;
+    localStorage.setItem('videoEnabled', 'true');
+    updateVideoUI();
+    initPlayer(videoInfo.video_id);
+    var doPlay = function() {
+      if (ytPlayer && ytPlayer.playVideo) {
+        var firstStart = (sentences[0] && sentences[0].start_time) ? sentences[0].start_time : 0;
+        ytPlayer.seekTo(firstStart, true);
+        ytPlayer.playVideo();
+        startFullPlayTracking();
+      } else {
+        setTimeout(doPlay, 500);
+      }
+    };
+    setTimeout(doPlay, 500);
+  }
+}
+
+function startTextSequentialPlay(startFrom) {
+  if (!fullPlayActive || !fullPlaySentences.length) return;
+  var idx = startFrom || 0;
+  fullPlayCurrentIdx = idx;
+  highlightFullPlaySentence(idx);
+  function playNext() {
+    if (!fullPlayActive || fullPlayPaused || idx >= fullPlaySentences.length) return;
+    fullPlayCurrentIdx = idx;
+    highlightFullPlaySentence(idx);
+    var s = fullPlaySentences[idx];
+    if (ttsEnabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      var utter = new SpeechSynthesisUtterance(s.text);
+      utter.lang = 'en-US';
+      utter.rate = 0.9;
+      if (selectedVoiceName) {
+        var voice = window.speechSynthesis.getVoices().find(function(v) { return v.name === selectedVoiceName; });
+        if (voice) utter.voice = voice;
+      }
+      utter.onend = function() {
+        idx++;
+        if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) {
+          setTimeout(playNext, 300);
+        }
+      };
+      window.speechSynthesis.speak(utter);
+    } else {
+      idx++;
+      if (idx < fullPlaySentences.length && !fullPlayPaused) setTimeout(playNext, 2000);
+    }
+  }
+  playNext();
+}
+
+function startFullPlayTracking() {
+  clearInterval(fullPlayTimer);
+  fullPlayTimer = setInterval(() => {
+    if (!ytPlayer || !ytPlayer.getCurrentTime) return;
+    const currentTime = ytPlayer.getCurrentTime();
+    let matchIdx = -1;
+    for (let i = 0; i < fullPlaySentences.length; i++) {
+      const s = fullPlaySentences[i];
+      if (currentTime >= (s.start_time||0) && currentTime < (s.end_time||0)) {
+        matchIdx = i;
+        break;
+      }
+    }
+    if (matchIdx !== fullPlayCurrentIdx && matchIdx >= 0) {
+      highlightFullPlaySentence(matchIdx);
+      fullPlayCurrentIdx = matchIdx;
+    }
+  }, 200);
+}
+
+function highlightFullPlaySentence(idx) {
+  // Remove previous
+  document.querySelectorAll('.fullplay-sentence.active').forEach(el => el.classList.remove('active'));
+  clearKaraokeTimers();
+
+  // Restore previous sentence text (remove karaoke spans)
+  if (fullPlayCurrentIdx >= 0 && fullPlayCurrentIdx < fullPlaySentences.length) {
+    const prevTextEl = document.getElementById(`fullplay-text-${fullPlayCurrentIdx}`);
+    if (prevTextEl) prevTextEl.textContent = fullPlaySentences[fullPlayCurrentIdx].text;
+  }
+
+  const el = document.getElementById(`fullplay-s-${idx}`);
+  if (el) {
+    el.classList.add('active');
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Apply karaoke to current sentence
+  const s = fullPlaySentences[idx];
+  const textEl = document.getElementById(`fullplay-text-${idx}`);
+  if (textEl && s) {
+    const uid = `fp-${idx}`;
+    textEl.innerHTML = renderKaraokeText(s.text, uid);
+    startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+  }
+}
+
+function seekToSentence(idx) {
+  const s = fullPlaySentences[idx];
+  if (ytPlayer && ytPlayer.seekTo && s) {
+    ytPlayer.seekTo(s.start_time || 0, true);
+    ytPlayer.playVideo();
+  }
+}
+
+async function toggleFullplaySentenceUnknown(idx, event) {
+  // If clicking the time label, just seek instead
+  if (event && event.target.classList.contains('fullplay-time')) {
+    seekToSentence(idx);
+    return;
+  }
+  const s = fullPlaySentences[idx];
+  if (!s) return;
+  // Toggle: if already unknown → known, otherwise → unknown
+  const target = s.status === 'unknown' ? 'known' : 'unknown';
+  await markFullplaySentence(idx, target);
+}
+
+async function markFullplaySentence(idx, targetStatus) {
+  const s = fullPlaySentences[idx];
+  if (!s) return;
+
+  const el = document.getElementById(`fullplay-s-${idx}`);
+  const dot = document.getElementById(`fullplay-dot-${idx}`);
+  const transEl = document.getElementById(`fullplay-trans-${idx}`);
+
+  if (targetStatus === 'unknown') {
+    if (s.status === 'unknown') return; // already unknown
+    await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'unknown' } });
+    s.status = 'unknown';
+    el.classList.add('marked-unknown');
+    if (dot) { dot.className = 'sentence-status-dot unknown'; dot.setAttribute('style', 'margin-top:6px;'); }
+    // Show translation for this sentence
+    if (transEl) {
+      transEl.style.display = 'block';
+      if (transEl.dataset.loaded !== 'true') {
+        transEl.textContent = '번역 중...';
+        const trans = await fetchTranslation(s.id);
+        transEl.textContent = trans || '';
+        transEl.dataset.loaded = 'true';
+      }
+    }
+    toast('모르는 문장으로 저장됨', 'error');
+  } else if (targetStatus === 'known') {
+    if (s.status === 'known') return; // already known
+    await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'known' } });
+    s.status = 'known';
+    el.classList.remove('marked-unknown');
+    if (dot) { dot.className = 'sentence-status-dot known'; dot.setAttribute('style', 'margin-top:6px;'); }
+    toast('아는 문장으로 변경', 'success');
+  }
+}
+
+// Keyboard shortcut: R = mark unknown + replay + advance, Y = mark known
+document.addEventListener('keydown', async (e) => {
+  if (!fullPlayActive || fullPlayCurrentIdx < 0) return;
+  // Ignore if user is typing in an input/textarea
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+  const key = e.key.toLowerCase();
+  if (e.code === 'Space' || key === ' ') {
+    e.preventDefault();
+    toggleFullPlayPause();
+    return;
+  }
+  if (fullPlayPaused) return;
+  if (key === 'r') {
+    e.preventDefault();
+    const idx = fullPlayCurrentIdx;
+    const s = fullPlaySentences[idx];
+    if (!s) return;
+    // Pause current playback
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+    clearInterval(fullPlayTimer);
+    // Mark as unknown
+    await markFullplaySentence(idx, 'unknown');
+    // Replay this sentence
+    if (textFullPlayMode) {
+      speakText(s.text);
+    } else if (s.youtube_video_id && ytPlayer && ytPlayer.seekTo) {
+      ytPlayer.seekTo(s.start_time || 0, true);
+      ytPlayer.playVideo();
+      var duration = ((s.end_time || 0) - (s.start_time || 0)) * 1000;
+      setTimeout(function() {
+        startFullPlayTracking();
+      }, duration + 500);
+    } else {
+      startFullPlayTracking();
+    }
+  } else if (key === 'y') {
+    e.preventDefault();
+    await markFullplaySentence(fullPlayCurrentIdx, 'known');
+  }
+});
+
+function toggleFullplayTranslation() {
+  fullplayTransEnabled = !fullplayTransEnabled;
+  localStorage.setItem('fullplayTransEnabled', fullplayTransEnabled);
+  const btn = document.getElementById('fullplay-trans-btn');
+  if (fullplayTransEnabled) {
+    btn.textContent = '해석 ON';
+    btn.classList.add('active');
+    loadFullplayTranslations();
+  } else {
+    btn.textContent = '해석 OFF';
+    btn.classList.remove('active');
+  }
+  document.querySelectorAll('.fullplay-translation').forEach(el => {
+    el.style.display = fullplayTransEnabled ? 'block' : 'none';
+  });
+}
+
+async function loadFullplayTranslations() {
+  for (let i = 0; i < fullPlaySentences.length; i++) {
+    const s = fullPlaySentences[i];
+    const el = document.getElementById(`fullplay-trans-${i}`);
+    if (!el) continue;
+    if (el.dataset.loaded === 'true') continue;
+    el.textContent = '번역 중...';
+    const trans = await fetchTranslation(s.id);
+    el.textContent = trans || '';
+    el.dataset.loaded = 'true';
+  }
+}
+
+function toggleFullPlayPause() {
+  fullPlayPaused = !fullPlayPaused;
+  var btn = document.getElementById('fullplay-pause-btn');
+  if (fullPlayPaused) {
+    btn.textContent = '재개';
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-green');
+    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+    clearInterval(fullPlayTimer);
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  } else {
+    btn.textContent = '일시정지';
+    btn.classList.remove('btn-green');
+    btn.classList.add('btn-primary');
+    if (textFullPlayMode) {
+      startTextSequentialPlay(fullPlayCurrentIdx);
+    } else {
+      if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
+      startFullPlayTracking();
+    }
+  }
+}
+
+function endFullPlay() {
+  clearInterval(fullPlayTimer);
+  clearKaraokeTimers();
+  fullPlayActive = false;
+  fullPlayPaused = false;
+  fullPlayCurrentIdx = -1;
+  textFullPlayMode = false;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+  // Reset pause button
+  var pauseBtn = document.getElementById('fullplay-pause-btn');
+  if (pauseBtn) { pauseBtn.textContent = '일시정지'; pauseBtn.classList.remove('btn-green'); pauseBtn.classList.add('btn-primary'); }
+  document.getElementById('study-fullplay').style.display = 'none';
+  if (studyCurrentVideoId) {
+    openVideoStudy(studyCurrentVideoId);
+  } else {
+    loadStudySelect();
+  }
+}
+
+// ── Review ─────────────────────────────────────────────
+async function loadReview(type) {
+  currentReviewType = type || 'sentence';
+  var titleEl = document.getElementById('review-page-title');
+  if (titleEl) titleEl.textContent = currentReviewType === 'word' ? '단어 복습' : '문장 복습';
+  reviewItems = await api('/api/reviews?type=' + currentReviewType);
+  reviewIndex = 0;
+  reviewRevealed = false;
+
+  if (!reviewItems.length) {
+    document.getElementById('review-empty').style.display = 'block';
+    document.getElementById('review-area').style.display = 'none';
+    return;
+  }
+  document.getElementById('review-empty').style.display = 'none';
+  document.getElementById('review-area').style.display = 'block';
+  showReviewItem();
+}
+
+function showReviewItem() {
+  if (reviewIndex >= reviewItems.length) {
+    document.getElementById('review-area').style.display = 'none';
+    document.getElementById('review-empty').style.display = 'block';
+    document.getElementById('review-empty').innerHTML = `
+      <div class="empty-icon">&#127881;</div>
+      <h3>복습 완료!</h3>
+      <p>모든 항목을 복습했습니다.</p>
+      <button class="btn btn-primary" style="margin-top:16px;" onclick="showPage('dashboard')">대시보드로</button>
+    `;
+    loadDashboard();
+    return;
+  }
+
+  const item = reviewItems[reviewIndex];
+  const pct = Math.round(reviewIndex / reviewItems.length * 100);
+  document.getElementById('review-progress-bar').style.width = pct + '%';
+
+  const typeLabel = item.item_type === 'word' ? '단어' : '문장';
+  document.getElementById('review-meta').textContent =
+    `${typeLabel} 복습 | ${item.video_title || ''} | Level ${item.level}/7`;
+
+  let dots = '';
+  for (let i = 0; i < 7; i++) {
+    if (i < item.level) dots += '<div class="level-dot filled"></div>';
+    else if (i === item.level) dots += '<div class="level-dot current"></div>';
+    else dots += '<div class="level-dot"></div>';
+  }
+  document.getElementById('review-level-bar').innerHTML = dots;
+
+  clearKaraokeTimers();
+  document.getElementById('review-sentence').textContent = '클릭하여 내용 확인';
+  document.getElementById('review-sentence').style.color = 'var(--text3)';
+  const transEl = document.getElementById('review-translation');
+  transEl.textContent = '';
+  transEl.style.display = 'none';
+  document.getElementById('review-revealed').style.display = 'none';
+  document.getElementById('review-hidden').style.display = 'block';
+  document.getElementById('review-count-text').textContent =
+    `${reviewIndex + 1} / ${reviewItems.length} 항목`;
+  reviewRevealed = false;
+}
+
+function revealReview() {
+  if (reviewRevealed) return;
+  reviewRevealed = true;
+  const item = reviewItems[reviewIndex];
+  const uid = 'rev-' + item.item_id;
+  const reviewEl = document.getElementById('review-sentence');
+
+  // Render with karaoke if it's a sentence
+  if (item.item_type === 'sentence' && item.start_time && item.end_time) {
+    reviewEl.innerHTML = renderKaraokeText(item.text, uid);
+  } else {
+    reviewEl.textContent = item.text;
+  }
+  reviewEl.style.color = '';
+
+  // Translation
+  const transEl = document.getElementById('review-translation');
+  transEl.className = 'study-translation translation-text';
+  if (translationEnabled && item.item_type === 'sentence') {
+    showTranslation(transEl, item.item_id);
+  } else {
+    transEl.style.display = 'none';
+  }
+
+  document.getElementById('review-revealed').style.display = 'block';
+  document.getElementById('review-hidden').style.display = 'none';
+
+  if (item.youtube_video_id && item.start_time) {
+    playFromTo(item.youtube_video_id, item.start_time || 0, item.end_time || 0);
+    if (item.item_type === 'sentence') {
+      startKaraoke(uid, item.text, item.start_time || 0, item.end_time || 0);
+    }
+  } else {
+    speakText(item.text);
+  }
+}
+
+function replayReviewItem() {
+  var item = reviewItems[reviewIndex];
+  if (!item) return;
+  var uid = 'rev-' + item.item_id;
+  var reviewEl = document.getElementById('review-sentence');
+
+  if (item.item_type === 'sentence' && item.start_time && item.end_time) {
+    reviewEl.innerHTML = renderKaraokeText(item.text, uid);
+  }
+
+  if (item.youtube_video_id && item.start_time) {
+    playSentence(item.youtube_video_id, item.start_time || 0, item.end_time || 0);
+    if (item.item_type === 'sentence') {
+      startKaraoke(uid, item.text, item.start_time || 0, item.end_time || 0);
+    }
+  } else {
+    speakText(item.text);
+  }
+}
+
+async function reviewMark(correct) {
+  const item = reviewItems[reviewIndex];
+  const result = await api('/api/reviews/process', {
+    method: 'POST',
+    body: { item_id: item.item_id, item_type: item.item_type, correct }
+  });
+
+  if (correct) {
+    toast(`Level ${result.level}/7 - ${result.level >= 7 ? '완전 습득!' : '다음 복습: ' + result.level_name}`);
+  } else {
+    toast('처음부터 다시 복습합니다', 'error');
+  }
+
+  reviewIndex++;
+  showReviewItem();
+}
+
+// ── Unknown Sentences ──────────────────────────────────
+let unknownSentencesData = [];
+
+async function loadUnknownSentences() {
+  unknownSentencesData = await api('/api/sentences/unknown');
+  const el = document.getElementById('unknown-sentences-list');
+  // Update video toggle button state
+  const btn2 = document.getElementById('unknown-video-toggle-btn');
+  if (btn2) {
+    btn2.textContent = videoEnabled ? '영상 ON' : '영상 OFF';
+    if (videoEnabled) btn2.classList.add('on'); else btn2.classList.remove('on');
+  }
+  if (!unknownSentencesData.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">&#128170;</div><h3>모르는 문장이 없습니다!</h3><p>모든 문장을 알고 있거나 아직 학습을 시작하지 않았습니다.</p></div>';
+    return;
+  }
+  const levelLabels = ['Lv0 방금','Lv1','Lv2','Lv3','Lv4','Lv5','Lv6'];
+  el.innerHTML = `<p style="color:var(--text2); margin-bottom:16px;">${unknownSentencesData.length}개의 모르는 문장 (에빙하우스 순서)</p>` +
+    unknownSentencesData.map((s, i) => `
+      <div class="sentence-item">
+        <div class="sentence-actions">
+          <button class="btn-play" onclick="event.stopPropagation();playUnknownSentenceByIdx(this,${i})" title="재생">&#9654;</button>
+        </div>
+        <div class="sentence-text study-sentence" id="unknown-sent-${s.id}">
+          ${s.text}
+          <div class="sentence-translation translation-text" id="trans-unknown-${s.id}" style="display:${translationEnabled?'block':'none'}"></div>
+        </div>
+        <div class="sentence-source">${s.video_title || ''} <span style="color:var(--amber);font-size:10px;">${levelLabels[s.review_level] || ''}</span></div>
+      </div>
+    `).join('');
+
+  if (translationEnabled) {
+    for (const s of unknownSentencesData) {
+      const transEl = document.getElementById(`trans-unknown-${s.id}`);
+      if (transEl) showTranslation(transEl, s.id);
+    }
+  }
+}
+
+// TTS 음성 재생 (YouTube 없이도 문장을 들을 수 있음)
+function speakText(text) {
+  if (!ttsEnabled || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'en-US';
+  utter.rate = 0.9;
+  if (selectedVoiceName) {
+    var voice = window.speechSynthesis.getVoices().find(function(v) { return v.name === selectedVoiceName; });
+    if (voice) utter.voice = voice;
+  }
+  window.speechSynthesis.speak(utter);
+}
+
+function playUnknownSentenceByIdx(btn, idx) {
+  var s = unknownSentencesData[idx];
+  if (!s) return;
+  var uid = 'unk-' + s.id;
+  var textEl = btn.closest('.sentence-item').querySelector('.sentence-text');
+  textEl.innerHTML = renderKaraokeText(s.text, uid) +
+    (translationEnabled ? '<div class="sentence-translation translation-text" id="trans-unknown-' + s.id + '" style="display:block;"></div>' : '');
+  if (translationEnabled) {
+    var transEl = document.getElementById('trans-unknown-' + s.id);
+    if (transEl) showTranslation(transEl, s.id);
+  }
+  // Play audio: YouTube if video ON, otherwise TTS
+  if (videoEnabled && s.youtube_video_id) {
+    playFromTo(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
+  } else {
+    speakText(s.text);
+  }
+  // Karaoke animation always runs
+  startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+}
+
+// ── Unknown Words ──────────────────────────────────────
+let unknownWordsData = [];
+let bulkWordIdx = 0;
+let bulkWordActive = false;
+
+async function loadUnknownWords() {
+  unknownWordsData = await api('/api/words/unknown');
+  const el = document.getElementById('unknown-words-list');
+  const studyBtn = document.getElementById('bulk-word-study-btn');
+  if (!unknownWordsData.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">&#128218;</div><h3>모르는 단어가 없습니다!</h3></div>';
+    if (studyBtn) studyBtn.style.display = 'none';
+    return;
+  }
+  if (studyBtn) studyBtn.style.display = '';
+  const levelLabels = ['Lv0 방금','Lv1','Lv2','Lv3','Lv4','Lv5','Lv6'];
+  el.innerHTML = `<p style="color:var(--text2); margin-bottom:16px;">${unknownWordsData.length}개의 모르는 단어 (에빙하우스 순서)</p>` +
+    unknownWordsData.map(w => `
+      <div class="sentence-item">
+        <div class="sentence-text" style="font-weight:600;">${w.word} <span style="color:var(--amber);font-size:10px;">${levelLabels[w.review_level] || ''}</span></div>
+        <button class="btn btn-sm btn-outline" onclick="markWordKnown(${w.id})">알게 됨</button>
+      </div>
+    `).join('');
+}
+
+function startBulkWordStudy() {
+  if (!unknownWordsData.length) { toast('학습할 단어가 없습니다', 'error'); return; }
+  bulkWordIdx = 0;
+  bulkWordActive = true;
+  document.getElementById('bulk-word-study').style.display = 'block';
+  document.getElementById('unknown-words-list').style.display = 'none';
+  showBulkWord();
+}
+
+function endBulkWordStudy() {
+  bulkWordActive = false;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  document.getElementById('bulk-word-study').style.display = 'none';
+  document.getElementById('unknown-words-list').style.display = '';
+  loadUnknownWords();
+}
+
+function showBulkWord() {
+  if (bulkWordIdx >= unknownWordsData.length) {
+    document.getElementById('word-study-word').textContent = '학습 완료!';
+    document.getElementById('word-study-meaning').style.display = 'none';
+    document.getElementById('word-study-buttons').style.display = 'none';
+    document.getElementById('word-study-hint').textContent = '';
+    document.getElementById('word-study-meta').textContent = unknownWordsData.length + '개 단어 학습 완료';
+    document.getElementById('word-study-progress').style.width = '100%';
+    return;
+  }
+  var w = unknownWordsData[bulkWordIdx];
+  var pct = (bulkWordIdx / unknownWordsData.length) * 100;
+  document.getElementById('word-study-progress').style.width = pct + '%';
+  document.getElementById('word-study-meta').textContent = (bulkWordIdx + 1) + ' / ' + unknownWordsData.length;
+  document.getElementById('word-study-word').textContent = w.word;
+  document.getElementById('word-study-meaning').style.display = 'none';
+  document.getElementById('word-study-meaning').textContent = '';
+  document.getElementById('word-study-buttons').style.display = 'none';
+  document.getElementById('word-study-hint').textContent = '클릭하면 뜻이 보입니다';
+  // Auto-speak the word
+  speakText(w.word);
+}
+
+async function revealWordMeaning() {
+  if (!bulkWordActive || bulkWordIdx >= unknownWordsData.length) return;
+  var w = unknownWordsData[bulkWordIdx];
+  var meaningEl = document.getElementById('word-study-meaning');
+  meaningEl.style.display = 'block';
+  meaningEl.textContent = '번역 중...';
+  document.getElementById('word-study-buttons').style.display = 'flex';
+  document.getElementById('word-study-hint').textContent = '';
+  // Speak the word
+  speakText(w.word);
+  // Translate the word
+  try {
+    var encoded = encodeURIComponent(w.word);
+    var resp = await fetch('https://api.mymemory.translated.net/get?q=' + encoded + '&langpair=en|ko');
+    var data = await resp.json();
+    var translated = (data && data.responseData && data.responseData.translatedText) ? data.responseData.translatedText : '번역 실패';
+    meaningEl.textContent = translated;
+  } catch(e) { meaningEl.textContent = '번역 오류'; }
+}
+
+async function processWordStudy(correct) {
+  if (bulkWordIdx >= unknownWordsData.length) return;
+  var w = unknownWordsData[bulkWordIdx];
+  await api('/api/reviews/process', { method: 'POST', body: { item_id: w.id, item_type: 'word', correct: correct } });
+  if (correct) {
+    toast('알겠음 - 다음 단계로', 'success');
+  } else {
+    toast('모르겠음 - 다시 복습합니다', 'error');
+  }
+  bulkWordIdx++;
+  showBulkWord();
+}
+
+async function addWordManual() {
+  const input = document.getElementById('add-word-input');
+  const word = input.value.trim();
+  if (!word) return;
+  await api('/api/words/add', { method: 'POST', body: { word } });
+  input.value = '';
+  toast(`"${word}" 추가됨`);
+  loadUnknownWords();
+}
+
+async function markWordKnown(wordId) {
+  await api('/api/words/mark', { method: 'POST', body: { word_id: wordId, status: 'known' } });
+  toast('단어가 "아는 단어"로 이동했습니다');
+  loadUnknownWords();
+}
+
+// ── Text Content ──────────────────────────────────────
+var currentTextMode = 'paste';
+var urlPreviewText = '';
+
+function switchContentTab(tab) {
+  document.getElementById('tab-youtube').classList.toggle('active', tab === 'youtube');
+  document.getElementById('tab-text').classList.toggle('active', tab === 'text');
+  document.getElementById('content-tab-youtube').style.display = tab === 'youtube' ? 'block' : 'none';
+  document.getElementById('content-tab-text').style.display = tab === 'text' ? 'block' : 'none';
+  if (tab === 'text') {
+    var sel = document.getElementById('text-content-category');
+    sel.innerHTML = '<option value="">카테고리 선택 (선택사항)</option>' +
+      categories.map(function(c) { return '<option value="' + c.id + '">' + c.name + '</option>'; }).join('');
+  }
+}
+
+function switchTextMode(mode) {
+  currentTextMode = mode;
+  ['paste', 'url', 'file'].forEach(function(m) {
+    var panel = document.getElementById('text-panel-' + m);
+    var btn = document.getElementById('text-mode-' + m);
+    if (panel) panel.style.display = m === mode ? 'block' : 'none';
+    if (btn) {
+      btn.classList.toggle('btn-primary', m === mode);
+      btn.classList.toggle('btn-outline', m !== mode);
+    }
+  });
+}
+
+async function fetchUrlPreview() {
+  var url = document.getElementById('text-content-url').value.trim();
+  if (!url) { toast('URL을 입력하세요', 'error'); return; }
+  var btn = document.getElementById('btn-url-preview');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>';
+  try {
+    var result = await api('/api/content/url/preview', { method: 'POST', body: { url: url } });
+    if (result.error) {
+      toast(result.error, 'error');
+      document.getElementById('url-preview').style.display = 'none';
+    } else {
+      urlPreviewText = result.text;
+      var titleInput = document.getElementById('text-content-title');
+      if (!titleInput.value.trim() && result.title) titleInput.value = result.title;
+      var preview = document.getElementById('url-preview');
+      preview.textContent = result.text.substring(0, 1000) + (result.text.length > 1000 ? '\n\n... (' + result.word_count + ' 단어)' : '');
+      preview.style.display = 'block';
+      toast(result.word_count + '개 단어 추출됨');
+    }
+  } catch(e) {
+    toast('URL 가져오기 실패', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '가져오기';
+  }
+}
+
+function onFileSelected(input) {
+  var info = document.getElementById('file-info');
+  if (input.files && input.files[0]) {
+    var f = input.files[0];
+    var sizeMB = (f.size / 1024 / 1024).toFixed(1);
+    info.textContent = '📄 ' + f.name + ' (' + sizeMB + 'MB)';
+    info.style.display = 'block';
+  } else {
+    info.style.display = 'none';
+  }
+}
+
+async function addTextContent() {
+  var title = document.getElementById('text-content-title').value.trim();
+  var catId = document.getElementById('text-content-category').value || null;
+  var btn = document.getElementById('btn-add-text');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>';
+
+  try {
+    var result;
+    if (currentTextMode === 'paste') {
+      var text = document.getElementById('text-content-body').value.trim();
+      if (!text) { toast('내용을 입력하세요', 'error'); return; }
+      result = await api('/api/content/text', {
+        method: 'POST',
+        body: { title: title, text: text, category_id: catId ? parseInt(catId) : null }
+      });
+    } else if (currentTextMode === 'url') {
+      var url = document.getElementById('text-content-url').value.trim();
+      if (!url) { toast('URL을 입력하세요', 'error'); return; }
+      result = await api('/api/content/url', {
+        method: 'POST',
+        body: { url: url, title: title, category_id: catId ? parseInt(catId) : null }
+      });
+    } else if (currentTextMode === 'file') {
+      var fileInput = document.getElementById('text-content-file');
+      if (!fileInput.files || !fileInput.files[0]) { toast('파일을 선택하세요', 'error'); return; }
+      var formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      if (title) formData.append('title', title);
+      if (catId) formData.append('category_id', catId);
+      var res = await fetch('/api/content/file', { method: 'POST', body: formData });
+      var text2 = await res.text();
+      result = text2 ? JSON.parse(text2) : {};
+    }
+
+    if (result && result.error) {
+      toast(result.error, 'error');
+    } else if (result) {
+      toast(result.message);
+      document.getElementById('text-content-title').value = '';
+      document.getElementById('text-content-body').value = '';
+      document.getElementById('text-content-url').value = '';
+      document.getElementById('url-preview').style.display = 'none';
+      document.getElementById('text-content-file').value = '';
+      document.getElementById('file-info').style.display = 'none';
+      urlPreviewText = '';
+      loadVideos();
+      loadDashboard();
+    }
+  } catch(e) {
+    toast('오류가 발생했습니다: ' + (e.message || e), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '추가';
+  }
+}
+
+// ── Stats ──────────────────────────────────────────────
+var chartInstances = {};
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+async function loadStats() {
+  var results = await Promise.all([api('/api/stats'), api('/api/analytics')]);
+  var stats = results[0];
+  var analytics = results[1];
+  if (typeof Chart === 'undefined') { console.warn('Chart.js not loaded yet'); return; }
+  var total = stats.total_sentences || 1;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card"><div class="stat-number blue">${stats.total_videos}</div><div class="stat-label">등록 콘텐츠</div></div>
+    <div class="stat-card"><div class="stat-number">${stats.total_sentences}</div><div class="stat-label">전체 문장</div></div>
+    <div class="stat-card"><div class="stat-number green">${stats.known_sentences}</div><div class="stat-label">아는 문장</div></div>
+    <div class="stat-card"><div class="stat-number red">${stats.unknown_sentences}</div><div class="stat-label">모르는 문장</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:#a78bfa;">${stats.mastered_sentences}</div><div class="stat-label">완전 습득</div></div>
+    <div class="stat-card"><div class="stat-number amber">${stats.due_reviews}</div><div class="stat-label">복습 대기</div></div>
+    <div class="stat-card"><div class="stat-number">${stats.total_words}</div><div class="stat-label">등록 단어</div></div>
+    <div class="stat-card"><div class="stat-number green">${stats.known_words}</div><div class="stat-label">아는 단어</div></div>
+  `;
+
+  // Chart colors
+  var chartColors = {
+    text: '#94a3b8', grid: '#1e293b',
+    green: '#22c55e', red: '#ef4444', amber: '#f59e0b',
+    blue: '#6366f1', purple: '#a78bfa', cyan: '#22d3ee', gray: '#64748b'
+  };
+
+  // 1) Mastery Donut
+  destroyChart('chart-mastery');
+  var m = analytics.mastery_distribution || {};
+  chartInstances['chart-mastery'] = new Chart(document.getElementById('chart-mastery'), {
+    type: 'doughnut',
+    data: {
+      labels: ['완전습득', '아는문장', '학습중', '모르는문장', '미학습'],
+      datasets: [{ data: [m.mastered||0, m.known||0, m.learning||0, m.unknown||0, m.new_count||0],
+        backgroundColor: [chartColors.purple, chartColors.green, chartColors.amber, chartColors.red, chartColors.gray] }]
+    },
+    options: { plugins: { legend: { labels: { color: chartColors.text } } }, responsive: true }
+  });
+
+  // 2) Word Donut
+  destroyChart('chart-words');
+  var w = analytics.word_distribution || {};
+  chartInstances['chart-words'] = new Chart(document.getElementById('chart-words'), {
+    type: 'doughnut',
+    data: {
+      labels: ['아는단어', '모르는단어'],
+      datasets: [{ data: [w.known||0, w.unknown||0],
+        backgroundColor: [chartColors.green, chartColors.red] }]
+    },
+    options: { plugins: { legend: { labels: { color: chartColors.text } } }, responsive: true }
+  });
+
+  // 3) Daily Progress Line
+  destroyChart('chart-daily');
+  var daily = analytics.daily_progress || [];
+  chartInstances['chart-daily'] = new Chart(document.getElementById('chart-daily'), {
+    type: 'line',
+    data: {
+      labels: daily.map(function(d) { return d.day.slice(5); }),
+      datasets: [{ label: '복습 완료', data: daily.map(function(d) { return d.count; }),
+        borderColor: chartColors.blue, backgroundColor: 'rgba(99,102,241,0.1)',
+        fill: true, tension: 0.3, pointRadius: 2 }]
+    },
+    options: {
+      plugins: { legend: { labels: { color: chartColors.text } } },
+      scales: {
+        x: { ticks: { color: chartColors.text }, grid: { color: chartColors.grid } },
+        y: { ticks: { color: chartColors.text }, grid: { color: chartColors.grid }, beginAtZero: true }
+      },
+      responsive: true
+    }
+  });
+
+  // 4) SRS Level Distribution
+  destroyChart('chart-srs');
+  var srs = analytics.srs_distribution || [];
+  var srsLabels = srs.map(function(d) { return 'Lv' + d.level; });
+  chartInstances['chart-srs'] = new Chart(document.getElementById('chart-srs'), {
+    type: 'bar',
+    data: {
+      labels: srsLabels,
+      datasets: [
+        { label: '문장', data: srs.map(function(d) { return d.sentences; }), backgroundColor: chartColors.blue },
+        { label: '단어', data: srs.map(function(d) { return d.words; }), backgroundColor: chartColors.cyan }
+      ]
+    },
+    options: {
+      plugins: { legend: { labels: { color: chartColors.text } } },
+      scales: {
+        x: { stacked: true, ticks: { color: chartColors.text }, grid: { color: chartColors.grid } },
+        y: { stacked: true, ticks: { color: chartColors.text }, grid: { color: chartColors.grid }, beginAtZero: true }
+      },
+      responsive: true
+    }
+  });
+
+  // Stats details
+  document.getElementById('stats-details').innerHTML = `
+    <div class="card">
+      <div class="card-title">에빙하우스 기억곡선 단계</div>
+      <div style="margin-top:12px; font-size:14px; color:var(--text2); line-height:2;">
+        Level 0: 즉시 (방금 학습/틀림) | Level 1: 1시간 후 | Level 2: 1일 후 | Level 3: 2일 후<br>
+        Level 4: 4일 후 | Level 5: 7일 후 | Level 6: 15일 후 | Level 7: 30일 후 = <strong style="color:var(--green);">완전 습득!</strong><br>
+        <span style="color:var(--red);">한 번이라도 틀리면 Level 0으로 리셋!</span>
+      </div>
+    </div>
+  `;
+}
+
+// ── Init ───────────────────────────────────────────────
+loadDashboard().catch(function(e) { console.error('Dashboard init error:', e); });
+loadCategories().catch(function(e) { console.error('Categories init error:', e); });
+
+// TTS init
+(function() {
+  var ttsBtn = document.getElementById('tts-toggle-btn');
+  if (ttsBtn) {
+    ttsBtn.textContent = ttsEnabled ? '음성 ON' : '음성 OFF';
+    ttsBtn.classList.toggle('on', ttsEnabled);
+  }
+  if (window.speechSynthesis) {
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  }
+})();
+</script>
+</body>
+</html>

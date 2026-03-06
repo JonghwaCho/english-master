@@ -1,0 +1,22 @@
+# Database
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+venv/
