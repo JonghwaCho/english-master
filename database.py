@@ -85,6 +85,31 @@ def init_db():
     except Exception:
         pass
 
+    # Playlists tables
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS playlists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            playlist_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            category_id INTEGER,
+            enabled INTEGER DEFAULT 1,
+            last_checked TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+        );
+        CREATE TABLE IF NOT EXISTS playlist_videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            playlist_id INTEGER NOT NULL,
+            video_db_id INTEGER NOT NULL,
+            youtube_video_id TEXT NOT NULL,
+            added_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+            FOREIGN KEY (video_db_id) REFERENCES videos(id) ON DELETE CASCADE,
+            UNIQUE(playlist_id, youtube_video_id)
+        );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -657,3 +682,101 @@ def get_analytics():
         "daily_progress": daily_progress,
         "srs_distribution": srs_distribution
     }
+
+
+# ── Playlists ──────────────────────────────────────────
+
+def add_playlist(playlist_id, title, url, category_id=None):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO playlists (playlist_id, title, url, category_id) VALUES (?,?,?,?)",
+            (playlist_id, title, url, category_id)
+        )
+        conn.commit()
+        row = conn.execute("SELECT id FROM playlists WHERE playlist_id=?", (playlist_id,)).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+def get_playlists():
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT p.*, c.name as category_name,
+               (SELECT COUNT(*) FROM playlist_videos pv WHERE pv.playlist_id = p.id) as video_count
+        FROM playlists p
+        LEFT JOIN categories c ON p.category_id = c.id
+        ORDER BY p.created_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_playlist(pl_id):
+    conn = get_conn()
+    row = conn.execute("""
+        SELECT p.*, c.name as category_name
+        FROM playlists p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.id=?
+    """, (pl_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_playlist(pl_id):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM playlists WHERE id=?", (pl_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_playlist(pl_id, **kwargs):
+    conn = get_conn()
+    try:
+        for key, val in kwargs.items():
+            if key in ('enabled', 'category_id', 'title'):
+                conn.execute(f"UPDATE playlists SET {key}=? WHERE id=?", (val, pl_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_playlist_last_checked(pl_id, last_checked):
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE playlists SET last_checked=? WHERE id=?", (last_checked, pl_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_enabled_playlists():
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM playlists WHERE enabled=1").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_playlist_video(pl_id, video_db_id, youtube_video_id):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO playlist_videos (playlist_id, video_db_id, youtube_video_id) VALUES (?,?,?)",
+            (pl_id, video_db_id, youtube_video_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_playlist_video_ids(pl_id):
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT youtube_video_id FROM playlist_videos WHERE playlist_id=?", (pl_id,)
+    ).fetchall()
+    conn.close()
+    return {r["youtube_video_id"] for r in rows}

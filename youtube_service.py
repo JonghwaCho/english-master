@@ -1,6 +1,8 @@
 """YouTube transcript extraction service."""
 
 import re
+import urllib.request
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse, parse_qs
 
 
@@ -201,3 +203,60 @@ def process_video(url):
         title = generate_title(all_sentences[0][2])
 
     return video_id, title, all_sentences
+
+
+# ── Playlist Functions ─────────────────────────────────
+
+
+def extract_playlist_id(url):
+    """Extract YouTube playlist ID from various URL formats."""
+    url = url.strip()
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    if "list" in qs:
+        return qs["list"][0]
+    # Might be just the playlist ID
+    if re.match(r'^PL[a-zA-Z0-9_-]{16,}$', url):
+        return url
+    return None
+
+
+def fetch_playlist_feed(playlist_id):
+    """
+    Fetch YouTube RSS feed for a playlist.
+    Returns list of dicts: [{"video_id": str, "title": str, "published": str}, ...]
+    Most recent 15 videos.
+    """
+    feed_url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+    req = urllib.request.Request(feed_url, headers={"User-Agent": "EnglishMaster/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        xml_data = resp.read()
+
+    root = ET.fromstring(xml_data)
+    ns = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
+
+    entries = []
+    for entry in root.findall("atom:entry", ns):
+        vid = entry.find("yt:videoId", ns)
+        title = entry.find("atom:title", ns)
+        published = entry.find("atom:published", ns)
+        if vid is not None:
+            entries.append({
+                "video_id": vid.text,
+                "title": title.text if title is not None else f"YouTube - {vid.text}",
+                "published": published.text if published is not None else "",
+            })
+    return entries
+
+
+def get_playlist_title(playlist_id):
+    """Get playlist title from RSS feed."""
+    feed_url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+    req = urllib.request.Request(feed_url, headers={"User-Agent": "EnglishMaster/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        xml_data = resp.read()
+
+    root = ET.fromstring(xml_data)
+    ns = {"atom": "http://www.w3.org/2005/Atom"}
+    title_el = root.find("atom:title", ns)
+    return title_el.text if title_el is not None else f"Playlist {playlist_id}"

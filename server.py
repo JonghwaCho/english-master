@@ -4,11 +4,14 @@
 import os
 import sys
 import re
+import time
+import logging
 import webbrowser
 import threading
 import urllib.request
 import urllib.parse
 import json as json_lib
+from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 
 import database as db
@@ -417,6 +420,144 @@ def api_analytics():
     return jsonify(db.get_analytics())
 
 
+# ── API: Playlists ──────────────────────────────────────
+
+SYNC_INTERVAL_MINUTES = 30
+sync_thread_running = False
+last_sync_time = None
+
+
+@app.route("/api/playlists", methods=["GET"])
+def api_get_playlists():
+    return jsonify({"playlists": db.get_playlists(), "last_sync_time": last_sync_time})
+
+
+@app.route("/api/playlists", methods=["POST"])
+def api_add_playlist():
+    data = request.json
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "URL을 입력하세요"}), 400
+
+    playlist_id = yt.extract_playlist_id(url)
+    if not playlist_id:
+        return jsonify({"error": "유효한 YouTube 재생목록 URL이 아닙니다"}), 400
+
+    try:
+        title = yt.get_playlist_title(playlist_id)
+    except Exception as e:
+        return jsonify({"error": f"재생목록을 가져올 수 없습니다: {e}"}), 400
+
+    custom_title = data.get("title", "").strip() or title
+    category_id = data.get("category_id") or None
+    full_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+    db_id = db.add_playlist(playlist_id, custom_title, full_url, category_id)
+    if not db_id:
+        return jsonify({"error": "이미 등록된 재생목록입니다"}), 400
+    return jsonify({"id": db_id, "title": custom_title, "playlist_id": playlist_id})
+
+
+@app.route("/api/playlists/<int:pl_id>", methods=["DELETE"])
+def api_delete_playlist(pl_id):
+    db.delete_playlist(pl_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/playlists/<int:pl_id>", methods=["PUT"])
+def api_update_playlist(pl_id):
+    data = request.json
+    db.update_playlist(pl_id, **data)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/playlists/<int:pl_id>/sync", methods=["POST"])
+def api_sync_playlist(pl_id):
+    result = sync_single_playlist(pl_id)
+    return jsonify(result)
+
+
+@app.route("/api/playlists/sync-all", methods=["POST"])
+def api_sync_all_playlists():
+    results = sync_all_playlists()
+    return jsonify({"results": results})
+
+
+@app.route("/api/playlists/status", methods=["GET"])
+def api_playlist_sync_status():
+    return jsonify({
+        "running": sync_thread_running,
+        "interval_minutes": SYNC_INTERVAL_MINUTES,
+        "last_sync": last_sync_time,
+    })
+
+
+def sync_single_playlist(pl_id):
+    """Sync one playlist. Returns dict with results."""
+    playlist = db.get_playlist(pl_id)
+    if not playlist:
+        return {"error": "재생목록을 찾을 수 없습니다", "added": 0}
+
+    try:
+        entries = yt.fetch_playlist_feed(playlist["playlist_id"])
+    except Exception as e:
+        logging.warning(f"Playlist RSS fetch failed for {playlist['playlist_id']}: {e}")
+        return {"error": str(e), "added": 0}
+
+    existing_ids = db.get_playlist_video_ids(pl_id)
+    new_count = 0
+    errors = []
+
+    for entry in entries:
+        if entry["video_id"] in existing_ids:
+            continue
+        video_url = f"https://www.youtube.com/watch?v={entry['video_id']}"
+        try:
+            video_id, title, sentences = yt.process_video(video_url)
+            db_video_id = db.add_video(video_url, video_id, title)
+            if playlist.get("category_id"):
+                db.set_video_category(db_video_id, playlist["category_id"])
+            existing_sents = db.get_all_sentences(db_video_id)
+            if not existing_sents:
+                db.add_sentences(db_video_id, sentences)
+            db.add_playlist_video(pl_id, db_video_id, entry["video_id"])
+            new_count += 1
+        except Exception as e:
+            errors.append({"video_id": entry["video_id"], "error": str(e)})
+            logging.info(f"Skipped video {entry['video_id']}: {e}")
+
+    now = datetime.now().isoformat()
+    db.update_playlist_last_checked(pl_id, now)
+
+    return {"added": new_count, "errors": len(errors), "skipped_details": errors[:5]}
+
+
+def sync_all_playlists():
+    """Sync all enabled playlists."""
+    global last_sync_time
+    playlists = db.get_enabled_playlists()
+    results = []
+    for pl in playlists:
+        result = sync_single_playlist(pl["id"])
+        result["playlist_title"] = pl["title"]
+        results.append(result)
+    last_sync_time = datetime.now().isoformat()
+    return results
+
+
+def _background_sync_loop():
+    """Background thread: periodically sync all playlists."""
+    global sync_thread_running
+    sync_thread_running = True
+    while True:
+        time.sleep(SYNC_INTERVAL_MINUTES * 60)
+        try:
+            logging.info("Background playlist sync starting...")
+            sync_all_playlists()
+            logging.info("Background playlist sync complete.")
+        except Exception as e:
+            logging.warning(f"Background sync error: {e}")
+
+
 # ── Main ────────────────────────────────────────────────
 
 def open_browser():
@@ -429,6 +570,10 @@ if __name__ == "__main__":
     print("  ║   English Master 영어 마스터 v1.0     ║")
     print("  ║   http://127.0.0.1:5294              ║")
     print("  ╚══════════════════════════════════════╝\n")
+
+    # Start background playlist sync thread
+    sync_thread = threading.Thread(target=_background_sync_loop, daemon=True)
+    sync_thread.start()
 
     threading.Timer(1.0, open_browser).start()
     app.run(host="127.0.0.1", port=5294, debug=True, use_reloader=False)

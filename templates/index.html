@@ -106,6 +106,7 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
 .word-chip { padding: 6px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.15s; }
 .word-chip:hover { border-color: var(--red); }
 .word-chip.selected { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:3px; margin-left:4px; opacity:0.7; }
 
 /* Video list */
 .video-item { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
@@ -240,6 +241,9 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
   <div class="nav-item" onclick="showPage('stats')">
     <span>통계</span>
   </div>
+  <div class="nav-item" onclick="showPage('settings')">
+    <span>설정</span>
+  </div>
   <div class="sidebar-categories" id="sidebar-categories">
     <div class="cat-header">
       <span>카테고리</span>
@@ -288,6 +292,7 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
       <div class="tab-container" style="margin:-20px -20px 16px -20px; padding:0 20px;">
         <button class="tab-btn active" id="tab-youtube" onclick="switchContentTab('youtube')">YouTube</button>
         <button class="tab-btn" id="tab-text" onclick="switchContentTab('text')">텍스트/기사</button>
+        <button class="tab-btn" id="tab-playlist" onclick="switchContentTab('playlist')">재생목록</button>
       </div>
       <div id="content-tab-youtube">
         <div style="display:flex;gap:12px;">
@@ -325,6 +330,20 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
           </select>
           <button class="btn btn-primary" onclick="addTextContent()" id="btn-add-text">추가</button>
         </div>
+      </div>
+      <div id="content-tab-playlist" style="display:none;">
+        <div style="display:flex;gap:12px;margin-bottom:12px;">
+          <input type="url" id="playlist-url" placeholder="YouTube 재생목록 URL을 붙여넣으세요..." style="flex:1;" onkeydown="if(event.key==='Enter')addPlaylist()">
+          <select id="playlist-category" style="width:160px;">
+            <option value="">카테고리 선택</option>
+          </select>
+          <button class="btn btn-primary" onclick="addPlaylist()" id="btn-add-playlist">등록</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="font-size:13px;color:var(--text3);" id="playlist-sync-status"></span>
+          <button class="btn btn-outline btn-sm" onclick="syncAllPlaylists()">전체 동기화</button>
+        </div>
+        <div id="playlist-list"></div>
       </div>
     </div>
     <div id="video-list"></div>
@@ -465,6 +484,34 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
       <div class="chart-card"><div class="card-title">SRS 레벨 분포</div><canvas id="chart-srs"></canvas></div>
     </div>
     <div id="stats-details" style="margin-top:16px;"></div>
+  </div>
+
+  <!-- Settings -->
+  <div class="page" id="page-settings">
+    <h1 class="page-title">설정</h1>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">문장별 학습 단축키</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+        <div style="font-size:14px;color:var(--text2);display:flex;align-items:center;">모르겠어요</div>
+        <input class="shortcut-input" id="key-study-unknown" readonly onclick="captureKey(this,'study','unknown')" style="text-align:center;cursor:pointer;font-size:14px;font-weight:600;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;">
+        <div style="font-size:14px;color:var(--text2);display:flex;align-items:center;">알아요</div>
+        <input class="shortcut-input" id="key-study-known" readonly onclick="captureKey(this,'study','known')" style="text-align:center;cursor:pointer;font-size:14px;font-weight:600;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;">
+        <div style="font-size:14px;color:var(--text2);display:flex;align-items:center;">다시 듣기</div>
+        <input class="shortcut-input" id="key-study-replay" readonly onclick="captureKey(this,'study','replay')" style="text-align:center;cursor:pointer;font-size:14px;font-weight:600;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;">
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">전체 재생 단축키</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+        <div style="font-size:14px;color:var(--text2);display:flex;align-items:center;">모르는 문장</div>
+        <input class="shortcut-input" id="key-fullplay-unknown" readonly onclick="captureKey(this,'fullplay','unknown')" style="text-align:center;cursor:pointer;font-size:14px;font-weight:600;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;">
+        <div style="font-size:14px;color:var(--text2);display:flex;align-items:center;">아는 문장</div>
+        <input class="shortcut-input" id="key-fullplay-known" readonly onclick="captureKey(this,'fullplay','known')" style="text-align:center;cursor:pointer;font-size:14px;font-weight:600;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;">
+        <div style="font-size:14px;color:var(--text2);display:flex;align-items:center;">일시정지</div>
+        <input class="shortcut-input" id="key-fullplay-pause" readonly onclick="captureKey(this,'fullplay','pause')" style="text-align:center;cursor:pointer;font-size:14px;font-weight:600;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;">
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--text3);">입력 필드를 클릭한 후 원하는 키를 누르세요. 변경 사항은 즉시 저장됩니다.</p>
   </div>
 </div>
 
@@ -792,7 +839,7 @@ function showPage(page) {
   var pageEl = (page === 'review-sentences' || page === 'review-words')
     ? 'page-review' : 'page-' + page;
   document.getElementById(pageEl).classList.add('active');
-  var pages = ['dashboard','videos','study','review-sentences','review-words','unknown-sentences','unknown-words','stats'];
+  var pages = ['dashboard','videos','study','review-sentences','review-words','unknown-sentences','unknown-words','stats','settings'];
   document.querySelectorAll('.nav-item').forEach(function(n, i) {
     n.classList.toggle('active', pages[i] === page);
   });
@@ -810,6 +857,7 @@ async function loadPage(page) {
   else if (page === 'unknown-sentences') loadUnknownSentences();
   else if (page === 'unknown-words') loadUnknownWords();
   else if (page === 'stats') loadStats();
+  else if (page === 'settings') loadShortcutSettings();
 }
 
 // ── Categories ─────────────────────────────────────────
@@ -1165,6 +1213,7 @@ function beginStudy(sentences) {
 }
 
 function showStudySentence() {
+  studyWordSelectMode = false;
   if (studyIndex >= studySentences.length) {
     finishStudy();
     return;
@@ -1190,10 +1239,11 @@ function showStudySentence() {
 
   document.getElementById('word-selector').style.display = 'none';
   document.getElementById('word-instruction').style.display = 'none';
+  var sk = shortcutKeys.study;
   document.getElementById('study-buttons').innerHTML = `
-    <button class="btn btn-outline btn-sm" onclick="replayStudySentence()">&#9654; 다시 듣기</button>
-    <button class="btn btn-red" onclick="studyMark('unknown')">모르겠어요</button>
-    <button class="btn btn-green" onclick="studyMark('known')">알아요!</button>
+    <button class="btn btn-outline btn-sm" onclick="replayStudySentence()">&#9654; 다시 듣기 <kbd>${getKeyLabel(sk.replay)}</kbd></button>
+    <button class="btn btn-red" onclick="studyMark('unknown')">모르겠어요 <kbd>${getKeyLabel(sk.unknown)}</kbd></button>
+    <button class="btn btn-green" onclick="studyMark('known')">알아요! <kbd>${getKeyLabel(sk.known)}</kbd></button>
   `;
 
   // Auto-play with karaoke or TTS
@@ -1218,43 +1268,47 @@ function replayStudySentence() {
   }
 }
 
+var studyWordSelectMode = false;
+
 async function studyMark(status) {
   const s = studySentences[studyIndex];
 
   if (status === 'unknown') {
+    // Immediately save sentence as unknown
+    await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'unknown' } });
+    studyUnknown++;
+    toast('모르는 문장으로 저장됨', 'error');
+
+    // Show word chips for optional word saving
     const words = s.text.replace(/[^a-zA-Z'\- ]/g, ' ').split(/\s+/).filter(w => w.length > 2);
     const unique = [...new Set(words.map(w => w.toLowerCase()))];
     document.getElementById('word-selector').style.display = 'flex';
     document.getElementById('word-selector').innerHTML = unique.map(function(w) {
-      return '<span class="word-chip">' + w + '</span>';
+      return '<span class="word-chip" onclick="saveWordChip(this)">' + w + '</span>';
     }).join('');
-    document.querySelectorAll('#word-selector .word-chip').forEach(function(chip) {
-      chip.addEventListener('click', function() { this.classList.toggle('selected'); });
-    });
+    document.getElementById('word-instruction').textContent = '모르는 단어를 클릭하면 즉시 저장됩니다.';
     document.getElementById('word-instruction').style.display = 'block';
+    studyWordSelectMode = true;
     document.getElementById('study-buttons').innerHTML = `
-      <button class="btn btn-outline" onclick="submitUnknown(${s.id})">모르는 단어 선택 완료</button>
+      <button class="btn btn-primary" onclick="studyNext()">다음 문장 &#9654;</button>
     `;
     return;
   }
 
   await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'known' } });
   studyKnown++;
-  studyIndex++;
-  showStudySentence();
+  studyNext();
 }
 
-function toggleWord(el) {
-  el.classList.toggle('selected');
+async function saveWordChip(el) {
+  if (el.classList.contains('selected')) return; // already saved
+  el.classList.add('selected');
+  await api('/api/words/add', { method: 'POST', body: { word: el.textContent } });
+  toast('"' + el.textContent + '" 저장됨');
 }
 
-async function submitUnknown(sentenceId) {
-  await api('/api/study/mark', { method: 'POST', body: { sentence_id: sentenceId, status: 'unknown' } });
-  const selected = document.querySelectorAll('.word-chip.selected');
-  for (const chip of selected) {
-    await api('/api/words/add', { method: 'POST', body: { word: chip.textContent } });
-  }
-  studyUnknown++;
+function studyNext() {
+  studyWordSelectMode = false;
   studyIndex++;
   showStudySentence();
 }
@@ -1487,44 +1541,66 @@ async function markFullplaySentence(idx, targetStatus) {
   }
 }
 
-// Keyboard shortcut: R = mark unknown + replay + advance, Y = mark known
+// Keyboard shortcuts for study & full play modes (configurable via settings)
 document.addEventListener('keydown', async (e) => {
-  if (!fullPlayActive || fullPlayCurrentIdx < 0) return;
   // Ignore if user is typing in an input/textarea
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  const key = e.key === ' ' ? ' ' : e.key.toLowerCase();
 
-  const key = e.key.toLowerCase();
-  if (e.code === 'Space' || key === ' ') {
+  // ── Sentence-by-sentence study mode ──
+  var studyArea = document.getElementById('study-area');
+  if (studyArea && studyArea.style.display !== 'none' && studyIndex < studySentences.length) {
+    var sk = shortcutKeys.study;
+    if (studyWordSelectMode) {
+      // In word selection mode: only "next" shortcut works
+      if (key === sk.known || key === sk.replay) {
+        e.preventDefault();
+        studyNext();
+      }
+      return;
+    }
+    if (key === sk.unknown) {
+      e.preventDefault();
+      studyMark('unknown');
+    } else if (key === sk.known) {
+      e.preventDefault();
+      studyMark('known');
+    } else if (key === sk.replay) {
+      e.preventDefault();
+      replayStudySentence();
+    }
+    return;
+  }
+
+  // ── Full play mode ──
+  if (!fullPlayActive || fullPlayCurrentIdx < 0) return;
+  var fk = shortcutKeys.fullplay;
+  if (key === fk.pause) {
     e.preventDefault();
     toggleFullPlayPause();
     return;
   }
   if (fullPlayPaused) return;
-  if (key === 'r') {
+  if (key === fk.unknown) {
     e.preventDefault();
     const idx = fullPlayCurrentIdx;
     const s = fullPlaySentences[idx];
     if (!s) return;
-    // Pause current playback
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
     clearInterval(fullPlayTimer);
-    // Mark as unknown
     await markFullplaySentence(idx, 'unknown');
-    // Replay this sentence
     if (textFullPlayMode) {
       speakText(s.text);
     } else if (s.youtube_video_id && ytPlayer && ytPlayer.seekTo) {
       ytPlayer.seekTo(s.start_time || 0, true);
       ytPlayer.playVideo();
       var duration = ((s.end_time || 0) - (s.start_time || 0)) * 1000;
-      setTimeout(function() {
-        startFullPlayTracking();
-      }, duration + 500);
+      setTimeout(function() { startFullPlayTracking(); }, duration + 500);
     } else {
       startFullPlayTracking();
     }
-  } else if (key === 'y') {
+  } else if (key === fk.known) {
     e.preventDefault();
     await markFullplaySentence(fullPlayCurrentIdx, 'known');
   }
@@ -1927,19 +2003,178 @@ async function markWordKnown(wordId) {
   loadUnknownWords();
 }
 
+// ── Shortcut Settings ─────────────────────────────────
+var shortcutKeys = {
+  study: { unknown: 'r', known: 'y', replay: ' ' },
+  fullplay: { unknown: 'r', known: 'y', pause: ' ' }
+};
+
+function getKeyLabel(key) {
+  if (key === ' ') return 'Space';
+  if (key === 'ArrowLeft') return '\u2190';
+  if (key === 'ArrowRight') return '\u2192';
+  if (key === 'ArrowUp') return '\u2191';
+  if (key === 'ArrowDown') return '\u2193';
+  if (key === 'Enter') return 'Enter';
+  if (key === 'Escape') return 'Esc';
+  return key.toUpperCase();
+}
+
+function loadShortcutSettings() {
+  try {
+    var saved = localStorage.getItem('shortcutKeys');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      shortcutKeys.study = Object.assign(shortcutKeys.study, parsed.study || {});
+      shortcutKeys.fullplay = Object.assign(shortcutKeys.fullplay, parsed.fullplay || {});
+    }
+  } catch(e) {}
+  // Update UI
+  ['study', 'fullplay'].forEach(function(mode) {
+    Object.keys(shortcutKeys[mode]).forEach(function(action) {
+      var el = document.getElementById('key-' + mode + '-' + action);
+      if (el) el.value = getKeyLabel(shortcutKeys[mode][action]);
+    });
+  });
+}
+
+function captureKey(inputEl, mode, action) {
+  inputEl.value = '키를 누르세요...';
+  inputEl.style.borderColor = 'var(--primary)';
+  function handler(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var key = e.key === ' ' ? ' ' : e.key.toLowerCase();
+    if (key === 'tab') return; // don't capture Tab
+    shortcutKeys[mode][action] = key;
+    inputEl.value = getKeyLabel(key);
+    inputEl.style.borderColor = 'var(--border)';
+    localStorage.setItem('shortcutKeys', JSON.stringify(shortcutKeys));
+    inputEl.removeEventListener('keydown', handler);
+    toast(getKeyLabel(key) + ' 키로 설정됨');
+  }
+  inputEl.addEventListener('keydown', handler);
+}
+
+// Load settings on page load
+(function() {
+  try {
+    var saved = localStorage.getItem('shortcutKeys');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      shortcutKeys.study = Object.assign(shortcutKeys.study, parsed.study || {});
+      shortcutKeys.fullplay = Object.assign(shortcutKeys.fullplay, parsed.fullplay || {});
+    }
+  } catch(e) {}
+})();
+
+// ── Playlists ─────────────────────────────────────────
+
+async function loadPlaylists() {
+  var data = await api('/api/playlists');
+  var list = document.getElementById('playlist-list');
+  if (!data.playlists || data.playlists.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:var(--text3);padding:20px;">등록된 재생목록이 없습니다</p>';
+    return;
+  }
+  list.innerHTML = data.playlists.map(function(pl) {
+    var statusIcon = pl.enabled ? '🟢' : '⏸️';
+    var lastChecked = pl.last_checked ? new Date(pl.last_checked).toLocaleString('ko-KR') : '아직 동기화 안 됨';
+    var catBadge = pl.category_name ? '<span style="background:var(--primary);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:6px;">' + pl.category_name + '</span>' : '';
+    return '<div class="video-card" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+          statusIcon + ' ' + pl.title + catBadge +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text3);margin-top:4px;">영상 ' + pl.video_count + '개 · 마지막 확인: ' + lastChecked + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px;">' +
+        '<button class="btn btn-outline btn-sm" onclick="syncPlaylist(' + pl.id + ',this)" title="동기화">🔄</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="togglePlaylist(' + pl.id + ',' + (pl.enabled ? 0 : 1) + ')" title="' + (pl.enabled ? '일시정지' : '활성화') + '">' + (pl.enabled ? '⏸' : '▶') + '</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="deletePlaylist(' + pl.id + ')" title="삭제" style="color:var(--danger);">✕</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  // Update sync status
+  var statusEl = document.getElementById('playlist-sync-status');
+  if (data.last_sync_time) {
+    statusEl.textContent = '마지막 전체 동기화: ' + new Date(data.last_sync_time).toLocaleString('ko-KR');
+  }
+}
+
+async function addPlaylist() {
+  var url = document.getElementById('playlist-url').value.trim();
+  if (!url) { toast('재생목록 URL을 입력하세요', 'error'); return; }
+  var catId = document.getElementById('playlist-category').value || null;
+  var btn = document.getElementById('btn-add-playlist');
+  btn.disabled = true; btn.textContent = '등록 중...';
+  try {
+    var result = await api('/api/playlists', { method: 'POST', body: { url: url, category_id: catId } });
+    if (result.error) { toast(result.error, 'error'); return; }
+    toast('재생목록이 등록되었습니다: ' + result.title);
+    document.getElementById('playlist-url').value = '';
+    loadPlaylists();
+  } catch(e) { toast('등록 실패: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '등록'; }
+}
+
+async function deletePlaylist(id) {
+  if (!confirm('이 재생목록을 삭제하시겠습니까?\n(이미 추가된 영상은 유지됩니다)')) return;
+  await api('/api/playlists/' + id, { method: 'DELETE' });
+  toast('재생목록이 삭제되었습니다');
+  loadPlaylists();
+}
+
+async function syncPlaylist(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    var result = await api('/api/playlists/' + id + '/sync', { method: 'POST' });
+    if (result.error) { toast(result.error, 'error'); return; }
+    var msg = result.added + '개 영상 추가됨';
+    if (result.errors > 0) msg += ' (' + result.errors + '개 건너뜀)';
+    toast(msg);
+    loadPlaylists();
+    loadVideos();
+  } catch(e) { toast('동기화 실패', 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🔄'; } }
+}
+
+async function syncAllPlaylists() {
+  toast('전체 동기화 시작...');
+  try {
+    var result = await api('/api/playlists/sync-all', { method: 'POST' });
+    var totalAdded = result.results.reduce(function(sum, r) { return sum + (r.added || 0); }, 0);
+    toast('전체 동기화 완료: ' + totalAdded + '개 영상 추가됨');
+    loadPlaylists();
+    loadVideos();
+  } catch(e) { toast('전체 동기화 실패', 'error'); }
+}
+
+async function togglePlaylist(id, enabled) {
+  await api('/api/playlists/' + id, { method: 'PUT', body: { enabled: enabled } });
+  toast(enabled ? '재생목록 활성화됨' : '재생목록 일시정지됨');
+  loadPlaylists();
+}
+
 // ── Text Content ──────────────────────────────────────
 var currentTextMode = 'paste';
 var urlPreviewText = '';
 
 function switchContentTab(tab) {
-  document.getElementById('tab-youtube').classList.toggle('active', tab === 'youtube');
-  document.getElementById('tab-text').classList.toggle('active', tab === 'text');
-  document.getElementById('content-tab-youtube').style.display = tab === 'youtube' ? 'block' : 'none';
-  document.getElementById('content-tab-text').style.display = tab === 'text' ? 'block' : 'none';
+  ['youtube', 'text', 'playlist'].forEach(function(t) {
+    document.getElementById('tab-' + t).classList.toggle('active', tab === t);
+    document.getElementById('content-tab-' + t).style.display = tab === t ? 'block' : 'none';
+  });
   if (tab === 'text') {
     var sel = document.getElementById('text-content-category');
     sel.innerHTML = '<option value="">카테고리 선택 (선택사항)</option>' +
       categories.map(function(c) { return '<option value="' + c.id + '">' + c.name + '</option>'; }).join('');
+  }
+  if (tab === 'playlist') {
+    var sel = document.getElementById('playlist-category');
+    sel.innerHTML = '<option value="">카테고리 선택</option>' +
+      categories.map(function(c) { return '<option value="' + c.id + '">' + c.name + '</option>'; }).join('');
+    loadPlaylists();
   }
 }
 
