@@ -194,7 +194,9 @@ def api_mark_word():
     return jsonify({"ok": True})
 
 
-# ── API: Reviews ────────────────────────────────────────
+# ── API: Reviews (SRS - 에빙하우스 망각곡선 기반 간격 반복) ──
+# Lv0→즉시 | Lv1→1h | Lv2→1일 | Lv3→2일 | Lv4→4일 | Lv5→7일 | Lv6→15일 | Lv7→30일(완전습득)
+# 정답→level+1, 오답→level=0 리셋
 
 @app.route("/api/reviews")
 def api_get_reviews():
@@ -235,6 +237,25 @@ def api_known_sentences():
 
 
 # ── API: Translation ────────────────────────────────────
+
+@app.route("/api/words/translate")
+def api_translate_word():
+    word = request.args.get("word", "").strip()
+    if not word:
+        return jsonify({"error": "단어가 없습니다"}), 400
+    try:
+        encoded = urllib.parse.quote(word)
+        api_url = f"https://api.mymemory.translated.net/get?q={encoded}&langpair=en|ko"
+        req = urllib.request.Request(api_url, headers={"User-Agent": "EnglishMaster/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json_lib.loads(resp.read().decode())
+            translation = data.get("responseData", {}).get("translatedText", "")
+            if translation:
+                return jsonify({"translation": translation})
+            return jsonify({"error": "번역 실패"}), 500
+    except Exception as e:
+        return jsonify({"error": f"번역 오류: {str(e)}"}), 500
+
 
 @app.route("/api/translate/<int:sentence_id>")
 def api_translate(sentence_id):
@@ -556,6 +577,218 @@ def _background_sync_loop():
             logging.info("Background playlist sync complete.")
         except Exception as e:
             logging.warning(f"Background sync error: {e}")
+
+
+# ── API: AI Integration ─────────────────────────────────
+# Gemini / Claude / ChatGPT 연동 프록시
+
+AI_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ai_settings.json")
+
+
+def load_ai_settings():
+    if os.path.exists(AI_SETTINGS_FILE):
+        with open(AI_SETTINGS_FILE, "r") as f:
+            return json_lib.loads(f.read())
+    return {"provider": "", "api_key": ""}
+
+
+def save_ai_settings_file(settings):
+    os.makedirs(os.path.dirname(AI_SETTINGS_FILE), exist_ok=True)
+    with open(AI_SETTINGS_FILE, "w") as f:
+        f.write(json_lib.dumps(settings))
+
+
+@app.route("/api/ai/settings", methods=["GET"])
+def api_ai_settings_get():
+    s = load_ai_settings()
+    # 보안: API 키는 마스킹해서 반환
+    masked = s.get("api_key", "")
+    if masked and len(masked) > 8:
+        masked = masked[:4] + "****" + masked[-4:]
+    return jsonify({"provider": s.get("provider", ""), "api_key_masked": masked, "has_key": bool(s.get("api_key"))})
+
+
+@app.route("/api/ai/settings", methods=["POST"])
+def api_ai_settings_save():
+    data = request.json
+    save_ai_settings_file({"provider": data.get("provider", ""), "api_key": data.get("api_key", "")})
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ai/test", methods=["POST"])
+def api_ai_test():
+    settings = load_ai_settings()
+    if not settings.get("api_key"):
+        return jsonify({"error": "API 키가 설정되지 않았습니다"}), 400
+    try:
+        result = call_ai(settings, "Say 'Hello! AI connection successful.' in one short sentence.")
+        return jsonify({"result": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/action", methods=["POST"])
+def api_ai_action():
+    settings = load_ai_settings()
+    if not settings.get("api_key"):
+        return jsonify({"error": "설정에서 AI API 키를 먼저 설정해주세요"}), 400
+
+    data = request.json
+    sentence = data.get("sentence", "")
+    action = data.get("action", "")
+
+    prompts = {
+        "similar": f"""다음 영어 문장과 비슷한 패턴의 영어 문장 3개를 만들어주세요.
+
+원문: "{sentence}"
+
+형식:
+1. [영어 문장]
+   → [한국어 번역]
+   💡 [원문과 비교하여 바뀐 부분 간단 설명]
+
+2. [영어 문장]
+   → [한국어 번역]
+   💡 [변경점 설명]
+
+3. [영어 문장]
+   → [한국어 번역]
+   💡 [변경점 설명]""",
+
+        "quiz": f"""다음 영어 문장을 바탕으로 한국어 학습자를 위한 퀴즈 3개를 만들어주세요.
+
+문장: "{sentence}"
+
+📝 퀴즈 1 - 빈칸 채우기
+핵심 단어를 빈칸으로 만들고, 보기 3개를 제시하세요.
+
+📝 퀴즈 2 - 어순 배열
+단어를 섞어서 제시하고, 올바른 순서로 배열하는 문제를 만드세요.
+
+📝 퀴즈 3 - 한→영 번역
+한국어 번역을 보여주고, 영작하게 하세요.
+
+각 퀴즈 뒤에 ✅ 정답과 해설을 한국어로 작성하세요.""",
+
+        "grammar": f"""다음 영어 문장의 문법 구조를 한국어로 상세히 분석해주세요.
+
+📌 문장: "{sentence}"
+
+아래 형식으로 설명해주세요:
+
+🔍 전체 문장 구조
+- 문장의 기본 형태(1~5형식) 파악
+- 주어(S) / 동사(V) / 목적어(O) / 보어(C) 등 표시
+
+📖 핵심 문법 포인트
+- 사용된 시제, 태(능동/수동), 조동사 등 설명
+- 해당 문법이 왜 이 문장에서 사용되었는지 설명
+
+🔗 구/절 분석
+- 전치사구, 관계사절, 부사절 등이 있으면 분석
+- 수식 관계 설명
+
+💡 핵심 정리
+- 이 문장에서 꼭 알아야 할 문법 핵심 1~2가지를 간결하게 정리
+
+쉽고 명확하게 한국어로 설명해주세요.""",
+
+        "words": f"""다음 영어 문장의 각 단어/표현을 한국어로 설명해주세요.
+
+📌 문장: "{sentence}"
+
+각 단어별로 아래 형식으로 설명:
+
+🔤 [단어/표현]
+- 뜻: [한국어 뜻]
+- 품사: [명사/동사/형용사 등]
+- 발음: [발음 힌트]
+- 예문: [다른 예문 1개 + 한국어 번역]
+- 💡 팁: [헷갈리기 쉬운 점이나 유사 표현]
+
+중요하지 않은 단어(a, the, is 등)는 간단히 설명하고, 핵심 단어 위주로 상세히 설명해주세요."""
+    }
+
+    prompt = prompts.get(action)
+    if not prompt:
+        return jsonify({"error": "알 수 없는 액션입니다"}), 400
+
+    try:
+        result = call_ai(settings, prompt)
+        return jsonify({"result": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def call_ai(settings, prompt, retries=3):
+    """Gemini / Claude / ChatGPT API 호출 (429 에러 시 재시도)"""
+    provider = settings["provider"]
+    api_key = settings["api_key"]
+
+    for attempt in range(retries + 1):
+        try:
+            return _call_ai_once(provider, api_key, prompt)
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < retries:
+                wait = 5 * (attempt + 1)  # 5초, 10초, 15초 대기 후 재시도
+                logging.info(f"AI API 429 rate limit, retry {attempt+1}/{retries} after {wait}s")
+                time.sleep(wait)
+                continue
+            # 에러 본문 읽기
+            error_body = ""
+            try:
+                error_body = e.read().decode()
+            except:
+                pass
+            raise Exception(f"AI API 오류 ({e.code}): {error_body[:200] if error_body else str(e)}")
+        except Exception as e:
+            raise Exception(f"AI 연결 오류: {str(e)}")
+    raise Exception("AI API 호출 실패 (재시도 초과)")
+
+
+def _call_ai_once(provider, api_key, prompt):
+    """실제 AI API 1회 호출"""
+    if provider == "gemini":
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        payload = json_lib.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json_lib.loads(resp.read().decode())
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    elif provider == "claude":
+        url = "https://api.anthropic.com/v1/messages"
+        body = json_lib.dumps({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode()
+        req = urllib.request.Request(url, data=body, headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01"
+        }, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json_lib.loads(resp.read().decode())
+            return data["content"][0]["text"]
+
+    elif provider == "chatgpt":
+        url = "https://api.openai.com/v1/chat/completions"
+        body = json_lib.dumps({
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1024
+        }).encode()
+        req = urllib.request.Request(url, data=body, headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json_lib.loads(resp.read().decode())
+            return data["choices"][0]["message"]["content"]
+
+    else:
+        raise ValueError("AI 서비스가 선택되지 않았습니다. 설정에서 선택해주세요.")
 
 
 # ── Main ────────────────────────────────────────────────

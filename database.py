@@ -110,6 +110,42 @@ def init_db():
         );
     """)
 
+    # 학습 활동 로그 테이블 (일별 통계용, 과거 기록 유지)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS study_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL,
+            item_type TEXT NOT NULL CHECK(item_type IN ('sentence','word')),
+            action TEXT NOT NULL,
+            correct INTEGER,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    # 기존 reviews 데이터를 study_log로 마이그레이션 (최초 1회)
+    migrated = conn.execute("SELECT COUNT(*) as c FROM study_log").fetchone()["c"]
+    if migrated == 0:
+        conn.execute("""
+            INSERT INTO study_log (item_id, item_type, action, correct, created_at)
+            SELECT item_id, item_type, 'review',
+                   CASE WHEN level > 0 THEN 1 ELSE 0 END,
+                   last_review
+            FROM reviews
+            WHERE last_review IS NOT NULL
+        """)
+        conn.commit()
+
+    conn.commit()
+    conn.close()
+
+
+def log_study_activity(item_id, item_type, action, correct=None):
+    """학습/복습 활동을 로그에 기록 (action: 'study', 'review', 'bulk_study')"""
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO study_log (item_id, item_type, action, correct) VALUES (?, ?, ?, ?)",
+        (item_id, item_type, action, 1 if correct else (0 if correct is False else None))
+    )
     conn.commit()
     conn.close()
 
@@ -309,6 +345,8 @@ def mark_sentence(sentence_id, status):
     conn.execute("UPDATE sentences SET status=? WHERE id=?", (status, sentence_id))
     conn.commit()
     conn.close()
+    # 학습 활동 로그 기록
+    log_study_activity(sentence_id, 'sentence', 'study', status == 'known')
 
 
 def get_unknown_sentences():
@@ -430,7 +468,24 @@ def mark_word(word_id, status):
     conn.close()
 
 
-# ── Reviews (Spaced Repetition) ─────────────────────────
+# ── Reviews (Spaced Repetition / SRS) ───────────────────
+#
+# SRS (Spaced Repetition System) - 에빙하우스 망각곡선 기반 간격 반복 학습
+#
+# Level 0: 즉시 복습 (방금 학습했거나 틀린 항목)
+# Level 1: 1시간 후 복습
+# Level 2: 1일(24시간) 후 복습
+# Level 3: 2일(48시간) 후 복습
+# Level 4: 4일(96시간) 후 복습
+# Level 5: 7일(168시간) 후 복습
+# Level 6: 15일(360시간) 후 복습
+# Level 7: 30일(720시간) 후 → 완전 습득(Mastered)!
+#
+# 규칙:
+# - 정답 시: level + 1 (다음 단계로 승급, 복습 간격 증가)
+# - 오답 시: level → 0 (처음부터 다시 시작, streak 리셋)
+# - Level 7 도달 시: 완전 습득으로 간주, 더 이상 복습 대기열에 나타나지 않음
+#
 
 def schedule_review(item_id, item_type, level=0):
     from srs import get_next_review_time
@@ -528,6 +583,10 @@ def process_review(item_id, item_type, correct):
           new_level, next_review.isoformat(), now.isoformat(), new_streak))
     conn.commit()
     conn.close()
+
+    # 학습 활동 로그 기록
+    log_study_activity(item_id, item_type, 'review', correct)
+
     return {"level": new_level, "streak": new_streak, "next_review": next_review.isoformat()}
 
 
@@ -635,26 +694,60 @@ def get_analytics():
     """).fetchall()
     content_progress = [dict(r) for r in content_progress]
 
-    # 3. Learning progress over time (line chart - last 30 days)
-    daily_progress = conn.execute("""
-        SELECT DATE(last_review) as day, COUNT(*) as count
-        FROM reviews
-        WHERE last_review IS NOT NULL
-          AND DATE(last_review) >= DATE('now', '-30 days')
-        GROUP BY DATE(last_review)
+    # 3. Learning progress over time (line chart - last 30 days, 문장/단어 분리)
+    # study_log 테이블 사용 (과거 기록 유지), 없으면 reviews fallback
+    has_study_log = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='study_log'"
+    ).fetchone()
+
+    if has_study_log:
+        daily_raw = conn.execute("""
+            SELECT DATE(created_at) as day, item_type, COUNT(*) as count
+            FROM study_log
+            WHERE DATE(created_at) >= DATE('now', '-30 days')
+            GROUP BY DATE(created_at), item_type
+            ORDER BY day
+        """).fetchall()
+    else:
+        daily_raw = conn.execute("""
+            SELECT DATE(last_review) as day, item_type, COUNT(*) as count
+            FROM reviews
+            WHERE last_review IS NOT NULL
+              AND DATE(last_review) >= DATE('now', '-30 days')
+            GROUP BY DATE(last_review), item_type
         ORDER BY day
     """).fetchall()
-    daily_progress = [dict(r) for r in daily_progress]
+    daily_map = {}
+    for row in daily_raw:
+        day = row["day"]
+        if day not in daily_map:
+            daily_map[day] = {"day": day, "sentences": 0, "words": 0}
+        if row["item_type"] == "sentence":
+            daily_map[day]["sentences"] = row["count"]
+        elif row["item_type"] == "word":
+            daily_map[day]["words"] = row["count"]
+    daily_progress = [daily_map[d] for d in sorted(daily_map.keys())]
 
     # 4. SRS level distribution (stacked bar chart)
-    srs_distribution = conn.execute("""
+    # Lv0~Lv6 각 레벨별 문장/단어 수를 정리
+    srs_raw = conn.execute("""
         SELECT r.item_type, r.level, COUNT(*) as count
         FROM reviews r
         WHERE r.level < 7
         GROUP BY r.item_type, r.level
-        ORDER BY r.item_type, r.level
+        ORDER BY r.level, r.item_type
     """).fetchall()
-    srs_distribution = [dict(r) for r in srs_distribution]
+    # 레벨별로 문장/단어 수 합산
+    srs_map = {}
+    for row in srs_raw:
+        lv = row["level"]
+        if lv not in srs_map:
+            srs_map[lv] = {"level": lv, "sentences": 0, "words": 0}
+        if row["item_type"] == "sentence":
+            srs_map[lv]["sentences"] = row["count"]
+        elif row["item_type"] == "word":
+            srs_map[lv]["words"] = row["count"]
+    srs_distribution = [srs_map[lv] for lv in sorted(srs_map.keys())]
 
     # 5. Word mastery distribution
     word_mastered = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='mastered'").fetchone()["c"]
