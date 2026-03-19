@@ -88,7 +88,7 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
 
 /* Study card */
 .study-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 40px; text-align: center; max-width: 700px; margin: 0 auto; width: 100%; }
-.study-sentence { font-size: 22px; line-height: 1.6; margin: 24px 0; min-height: 60px; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 4px; transition: color 0.3s, text-shadow 0.3s; text-align: left; }
+.study-sentence { font-size: var(--app-font-size, 22px); line-height: 1.6; margin: 24px 0; min-height: 60px; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 4px; transition: color 0.3s, text-shadow 0.3s; text-align: left; }
 .study-translation { font-size: 16px; color: var(--text2); margin: 0 0 16px; min-height: 24px; font-style: italic; }
 .study-meta { font-size: 13px; color: var(--text3); margin-bottom: 16px; }
 .study-buttons { display: flex; gap: 16px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
@@ -121,7 +121,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 .category-tag { padding: 2px 8px; border-radius: 4px; font-size: 11px; background: rgba(99,102,241,0.15); color: var(--primary); }
 
 /* Sentence list */
-.sentence-item { padding: 12px 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; font-size: 14px; line-height: 1.5; display: flex; align-items: flex-start; gap: 12px; }
+.sentence-item { padding: 12px 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; font-size: var(--app-font-size, 14px); line-height: 1.5; display: flex; align-items: flex-start; gap: 12px; }
 .sentence-text { flex: 1; }
 .sentence-translation { font-size: 13px; color: var(--text2); margin-top: 4px; font-style: italic; }
 .sentence-source { font-size: 11px; color: var(--text3); white-space: nowrap; }
@@ -138,7 +138,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 .level-dot.current { background: var(--amber); }
 
 /* Full play mode */
-.fullplay-sentence { padding: 10px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; border-left: 3px solid transparent; transition: all 0.2s; display: flex; align-items: flex-start; gap: 8px; }
+.fullplay-sentence { padding: 10px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; border-left: 3px solid transparent; transition: all 0.2s; display: flex; align-items: flex-start; gap: 8px; font-size: var(--app-font-size, 14px); }
 .fullplay-sentence:hover { background: var(--bg3); }
 .fullplay-sentence.active { background: rgba(99, 102, 241, 0.15); border-left-color: var(--primary); }
 .fullplay-sentence.active .fullplay-text { color: #38bdf8; }
@@ -216,10 +216,11 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 .word-flash-container { display: flex; gap: 16px; }
 .word-flash-main { flex: 1; min-width: 0; }
 .word-flash-box {
-  width: 320px; flex-shrink: 0; background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 24px 16px; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; text-align: center; position: sticky; top: 8px;
-  height: fit-content; min-height: 160px; transition: border-color 0.3s; z-index: 10;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 16px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  height: fit-content; min-height: 120px; transition: border-color 0.3s; z-index: 10;
+  margin: 8px 0;
 }
 .word-flash-box.active { border-color: var(--primary); box-shadow: 0 0 20px rgba(99, 102, 241, 0.15); }
 .word-flash-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
@@ -237,6 +238,8 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
   transition: border-color 0.2s;
 }
 .review-all-item:hover { border-color: var(--primary); }
+.sent-all-row { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:8px; transition: background 0.15s, border-color 0.15s; cursor:default; font-size: var(--app-font-size, 14px); }
+.sent-all-row:hover { background: rgba(234, 179, 8, 0.12); border-color: rgba(234, 179, 8, 0.5); }
 .review-all-item .word-text { font-size: 20px; font-weight: 700; min-width: 180px; }
 .review-all-item .word-level { font-size: 11px; color: var(--text3); min-width: 60px; }
 .review-all-check { display: flex; gap: 8px; margin-left: auto; }
@@ -260,9 +263,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
   <div class="sidebar-header">
     <h1><span>English</span> Master</h1>
   </div>
-  <div id="back-btn" onclick="goBack()" style="display:none; padding:8px 20px; cursor:pointer; align-items:center; gap:8px; font-size:13px; color:var(--text2); border-bottom:1px solid var(--border); transition:background 0.15s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-    <span style="font-size:16px;">←</span> <span>뒤로가기</span>
-  </div>
+  <div id="back-btn" style="display:none;"></div>
   <div class="nav-item active" onclick="showPage('dashboard')">
     <span>Dashboard</span>
   </div>
@@ -441,27 +442,23 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     </div>
     <!-- Full video play area -->
     <div id="study-fullplay" style="display:none;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <h2 style="font-size:18px;">전체학습하기</h2>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <span style="font-size:12px; color:var(--text3);">R=모르는문장 | Y=아는문장 | Space=일시정지</span>
-          <button class="btn btn-primary btn-sm" onclick="toggleFullPlayPause()" id="fullplay-pause-btn" style="min-width:120px;padding:8px 24px;text-align:center;display:inline-flex;align-items:center;justify-content:center;">일시정지</button>
-          <button class="toggle-btn" onclick="toggleFullplayTranslation()" id="fullplay-trans-btn">해석 OFF</button>
-          <button class="toggle-btn" onclick="toggleWordFlash()" id="wordflash-toggle-btn">단어 OFF</button>
-          <button class="btn btn-red btn-sm" onclick="endFullPlay()" style="min-width:120px;padding:8px 24px;text-align:center;display:inline-flex;align-items:center;justify-content:center;">종료</button>
+      <div style="text-align:center; margin-bottom:16px;">
+        <h2 style="font-size:18px; margin-bottom:12px;">전체학습하기</h2>
+        <div id="fullplay-btn-bar" style="display:flex; gap:0; align-items:center; justify-content:center; width:600px; margin:0 auto;">
+          <button class="btn btn-primary btn-sm" onclick="toggleFullPlayPause()" id="fullplay-pause-btn" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:6px 0 0 6px;">일시정지</button>
+          <button class="toggle-btn" onclick="toggleFullplayTranslation()" id="fullplay-trans-btn" style="flex:1;padding:8px 0;border-radius:0;">해석 OFF</button>
+          <button class="toggle-btn" onclick="toggleWordFlash()" id="wordflash-toggle-btn" style="flex:1;padding:8px 0;border-radius:0;">단어 OFF</button>
+          <button class="btn btn-red btn-sm" onclick="endFullPlay()" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">종료</button>
         </div>
+        <div style="font-size:12px; color:var(--text3); margin-top:8px;">R=모르는문장 | Y=아는문장 | Space=일시정지</div>
       </div>
-      <div class="word-flash-container">
-        <div class="word-flash-main">
-          <div id="fullplay-sentences" style="max-height:calc(100vh - 250px); overflow-y:auto; padding:8px;"></div>
-        </div>
-        <div class="word-flash-box" id="word-flash-box" style="display:none;cursor:pointer;" onclick="saveWordFlashWords()" title="클릭하면 이 단어 + 앞뒤 단어를 모르는 단어에 저장">
-          <div class="word-flash-label">Word Flash</div>
-          <div class="word-flash-word" id="word-flash-word">-</div>
-          <div class="word-flash-counter" id="word-flash-counter"></div>
-          <div class="word-flash-sentence" id="word-flash-sentence"></div>
-          <div class="word-flash-saved" id="word-flash-saved" style="font-size:11px;color:var(--green);margin-top:8px;min-height:16px;"></div>
-        </div>
+      <div id="fullplay-sentences" style="max-height:calc(100vh - 300px); overflow-y:auto; padding:8px;"></div>
+      <div class="word-flash-box" id="word-flash-box" style="display:none;cursor:pointer;width:600px;margin:0 auto;" onclick="saveWordFlashWords()" title="클릭하면 이 단어 + 앞뒤 단어를 모르는 단어에 저장">
+        <div class="word-flash-label">Word Flash</div>
+        <div class="word-flash-word" id="word-flash-word">-</div>
+        <div class="word-flash-counter" id="word-flash-counter"></div>
+        <div class="word-flash-sentence" id="word-flash-sentence"></div>
+        <div class="word-flash-saved" id="word-flash-saved" style="font-size:11px;color:var(--green);margin-top:8px;min-height:16px;"></div>
       </div>
     </div>
     <!-- Study complete -->
@@ -571,28 +568,14 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
       <h1 class="page-title" style="margin-bottom:0;">모르는 문장</h1>
       <div style="display:flex; gap:8px; align-items:center;">
-        <div style="display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
-          <button id="sent-mode-all-btn" onclick="switchSentMode('all')" style="padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; border:none;">📋 전체</button>
-          <button id="sent-mode-list-btn" onclick="switchSentMode('list')" style="padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; border:none; border-left:1px solid var(--border);">📄 목록</button>
-        </div>
-        <button class="toggle-btn" id="unknown-video-toggle-btn" onclick="toggleVideo()">영상 OFF</button>
-      </div>
-    </div>
-    <!-- 전체 학습 모드 -->
-    <div id="unknown-sent-all-mode" style="display:none;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <span style="font-size:13px; color:var(--text3);" id="sent-all-count"></span>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-green btn-sm" onclick="submitSentAll()">💾 저장</button>
-        </div>
-      </div>
-      <div id="sent-all-list" style="display:flex; flex-direction:column; gap:6px;"></div>
-      <div style="display:flex; justify-content:center; gap:8px; margin-top:20px;">
         <button class="btn btn-green btn-sm" onclick="submitSentAll()">💾 저장</button>
       </div>
     </div>
-    <!-- 기존 목록 모드 -->
-    <div id="unknown-sentences-list"></div>
+    <div style="margin-bottom:12px;">
+      <span style="font-size:13px; color:var(--text3);" id="sent-all-count"></span>
+    </div>
+    <div id="sent-all-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+    <div id="unknown-sentences-list" style="display:none;"></div>
   </div>
 
   <!-- Unknown Words -->
@@ -614,9 +597,6 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     <!-- Mode: ALL at once (compact list) -->
     <div id="bulk-word-study-all" style="display:none;">
       <div id="bulk-all-word-list" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-      <div style="display:flex; justify-content:center; gap:8px; margin-top:20px;">
-        <button class="btn btn-green btn-sm" onclick="submitBulkWordStudyAll()">💾 저장</button>
-      </div>
     </div>
     <!-- Mode: Individual card -->
     <div id="bulk-word-study" style="display:none;">
@@ -625,11 +605,12 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
         <div class="study-meta" id="word-study-meta"></div>
         <div class="study-sentence" id="word-study-word" style="font-size:32px; font-weight:700; justify-content:center; cursor:pointer;" onclick="revealWordMeaning()"></div>
         <div class="study-translation" id="word-study-meaning" style="display:none;"></div>
-        <div class="study-buttons" id="word-study-buttons" style="display:none;">
-          <button class="btn btn-red" onclick="processWordStudy(false)">&#10060; 모르겠음</button>
-          <button class="btn btn-green" onclick="processWordStudy(true)">&#9989; 알겠음</button>
+        <p style="color:var(--text3); font-size:12px; margin-top:8px;" id="word-study-hint">클릭하면 뜻이 보입니다</p>
+        <div class="study-buttons" id="word-study-buttons" style="margin-top:16px;">
+          <button class="btn btn-red" onclick="processWordStudy(false)">❌ 모르겠음</button>
+          <button class="btn btn-outline" onclick="revealWordMeaning()">👀 뜻 보기</button>
+          <button class="btn btn-green" onclick="processWordStudy(true)">✅ 알겠음</button>
         </div>
-        <p style="color:var(--text3); font-size:12px; margin-top:12px;" id="word-study-hint">클릭하면 뜻이 보입니다</p>
         <button class="btn btn-outline btn-sm" style="margin-top:16px;" onclick="endBulkWordStudy()">학습 종료</button>
       </div>
     </div>
@@ -687,6 +668,58 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
       </div>
     </div>
     <p style="font-size:12px;color:var(--text3);">입력 필드를 클릭한 후 원하는 키를 누르세요. 변경 사항은 즉시 저장됩니다.</p>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">🔁 모르는 문장 다시 재생 속도</div>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center;">
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="replay-speed" value="1" onchange="setReplaySpeed(1)"> 원래 속도 (1x)
+        </label>
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="replay-speed" value="0.5" onchange="setReplaySpeed(0.5)"> 느리게 (0.5x)
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;">R키 또는 마우스 클릭으로 모르는 문장 다시 재생 시 적용됩니다.</p>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">👂 유튜브 문장 복습 모드</div>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center;">
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="review-mode-yt" value="listen" onchange="setReviewListenFirst(true)"> 듣기 먼저 (Listening)
+        </label>
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="review-mode-yt" value="read" onchange="setReviewListenFirst(false)"> 보기 먼저 (Reading)
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;">듣기 먼저: 문장을 숨기고 영상 소리를 먼저 들려줍니다. 히어링 연습에 효과적!</p>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">🔤 텍스트 크기</div>
+      <div style="margin-top:12px; display:flex; align-items:center; gap:16px;">
+        <input type="range" id="font-size-slider" min="12" max="24" step="1" value="14" oninput="setFontSize(this.value)" style="flex:1; cursor:pointer;">
+        <span id="font-size-label" style="font-size:14px; color:var(--text2); min-width:40px; text-align:center; font-weight:600;">14px</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text3); margin-top:4px;">
+        <span>작게 (12px)</span>
+        <span>크게 (24px)</span>
+      </div>
+      <div id="font-size-preview" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+        <div style="color:var(--text2); margin-bottom:4px; font-size:11px;">미리보기:</div>
+        <div id="font-preview-text">Had in the video. You could use this chat GPT prompt I made for you.</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">🇰🇷 콩글리시 (한글 발음)</div>
+      <div style="margin-top:12px; display:flex; align-items:center; gap:12px;">
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="konglish-toggle" onchange="toggleKonglish(this.checked)">
+          <span id="konglish-label">OFF</span>
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;">ON으로 설정하면 영어 단어/문장 아래에 한글 발음이 표시됩니다.</p>
+      <div id="konglish-preview" style="margin-top:8px; padding:8px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border); font-size:13px;">
+        vocabulary → <span style="color:var(--amber);">버캐뷸러리</span>
+      </div>
+    </div>
     <!-- AI 연동 설정 -->
     <div class="card" style="margin-top:16px;">
       <div class="card-title">🤖 AI 연동 설정</div>
@@ -785,6 +818,10 @@ let fullPlaySentences = [];
 let fullPlayTimer = null;
 let fullPlayCurrentIdx = -1;
 let fullplayTransEnabled = localStorage.getItem('fullplayTransEnabled') === 'true';
+let replaySpeed = parseFloat(localStorage.getItem('replaySpeed')) || 1;
+let reviewListenFirst = localStorage.getItem('reviewListenFirst') === 'true';
+let appFontSize = parseInt(localStorage.getItem('appFontSize')) || 14;
+let konglishEnabled = localStorage.getItem('konglishEnabled') === 'true';
 
 // ── Karaoke State ─────────────────────────────────────
 let karaokeTimers = [];
@@ -1631,17 +1668,31 @@ async function startFullVideoPlay(videoId) {
     // Text content: use TTS sequential play
     startTextSequentialPlay();
   } else {
-    // YouTube: enable video and start playing
+    // YouTube: enable video and start playing (with buffering)
     videoEnabled = true;
     localStorage.setItem('videoEnabled', 'true');
     updateVideoUI();
     initPlayer(videoInfo.video_id);
     var doPlay = function() {
-      if (ytPlayer && ytPlayer.playVideo) {
+      if (ytPlayer && ytPlayer.playVideo && ytReady) {
         var firstStart = (sentences[0] && sentences[0].start_time) ? sentences[0].start_time : 0;
+        // Seek first to trigger buffering
         ytPlayer.seekTo(firstStart, true);
-        ytPlayer.playVideo();
-        startFullPlayTracking();
+        ytPlayer.pauseVideo();
+        // Wait for video to buffer before playing
+        var waitBuffer = function() {
+          var state = ytPlayer.getPlayerState && ytPlayer.getPlayerState();
+          var buffered = ytPlayer.getVideoLoadedFraction && ytPlayer.getVideoLoadedFraction();
+          // State 5=cued, 2=paused, 3=buffering; wait until buffered enough
+          if (buffered > 0.02 && state !== 3) {
+            ytPlayer.seekTo(firstStart, true);
+            ytPlayer.playVideo();
+            startFullPlayTracking();
+          } else {
+            setTimeout(waitBuffer, 200);
+          }
+        };
+        setTimeout(waitBuffer, 300);
       } else {
         setTimeout(doPlay, 500);
       }
@@ -1684,24 +1735,39 @@ function startTextSequentialPlay(startFrom) {
   playNext();
 }
 
+// Time offset to compensate for YouTube getCurrentTime() API lag (seconds)
+var ytTimeOffset = 0.35;
+var fullPlayRAF = null;
+
 function startFullPlayTracking() {
   clearInterval(fullPlayTimer);
-  fullPlayTimer = setInterval(() => {
-    if (!ytPlayer || !ytPlayer.getCurrentTime) return;
-    const currentTime = ytPlayer.getCurrentTime();
-    let matchIdx = -1;
-    for (let i = 0; i < fullPlaySentences.length; i++) {
-      const s = fullPlaySentences[i];
-      if (currentTime >= (s.start_time||0) && currentTime < (s.end_time||0)) {
-        matchIdx = i;
-        break;
+  if (fullPlayRAF) cancelAnimationFrame(fullPlayRAF);
+
+  function trackLoop() {
+    if (!fullPlayActive) return;
+    if (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1) {
+      const rawTime = ytPlayer.getCurrentTime();
+      const currentTime = rawTime + ytTimeOffset;
+      let matchIdx = -1;
+      for (let i = 0; i < fullPlaySentences.length; i++) {
+        const s = fullPlaySentences[i];
+        if (currentTime >= (s.start_time||0) && currentTime < (s.end_time||0)) {
+          matchIdx = i;
+          break;
+        }
+      }
+      if (matchIdx !== fullPlayCurrentIdx && matchIdx >= 0) {
+        highlightFullPlaySentence(matchIdx);
+        fullPlayCurrentIdx = matchIdx;
+      }
+      // Also update word flash in real-time
+      if (wordFlashEnabled && fullPlayCurrentIdx >= 0) {
+        updateWordFlashSync(rawTime);
       }
     }
-    if (matchIdx !== fullPlayCurrentIdx && matchIdx >= 0) {
-      highlightFullPlaySentence(matchIdx);
-      fullPlayCurrentIdx = matchIdx;
-    }
-  }, 200);
+    fullPlayRAF = requestAnimationFrame(trackLoop);
+  }
+  fullPlayRAF = requestAnimationFrame(trackLoop);
 }
 
 function highlightFullPlaySentence(idx) {
@@ -1718,6 +1784,17 @@ function highlightFullPlaySentence(idx) {
   const el = document.getElementById(`fullplay-s-${idx}`);
   if (el) {
     el.classList.add('active');
+
+    // Move word-flash-box right after the active sentence inside the sentence list
+    const wordBox = document.getElementById('word-flash-box');
+    if (wordBox && wordBox.style.display !== 'none') {
+      const transEl = document.getElementById(`fullplay-trans-${idx}`);
+      const insertAfter = transEl || el;
+      if (insertAfter.nextSibling !== wordBox) {
+        insertAfter.parentNode.insertBefore(wordBox, insertAfter.nextSibling);
+      }
+    }
+
     // Scroll the sentence list container so current sentence is visible
     const sentContainer = document.getElementById('fullplay-sentences');
     if (sentContainer) {
@@ -1755,11 +1832,284 @@ async function toggleFullplaySentenceUnknown(idx, event) {
     seekToSentence(idx);
     return;
   }
+  // Left click = same as R key: mark unknown + replay
+  if (fullPlayActive) {
+    await replayAsUnknown(idx);
+  } else {
+    const s = fullPlaySentences[idx];
+    if (!s) return;
+    const target = s.status === 'unknown' ? 'known' : 'unknown';
+    await markFullplaySentence(idx, target);
+  }
+}
+
+// Common function for R key and left click: mark unknown + replay at configured speed
+async function replayAsUnknown(idx) {
   const s = fullPlaySentences[idx];
   if (!s) return;
-  // Toggle: if already unknown → known, otherwise → unknown
-  const target = s.status === 'unknown' ? 'known' : 'unknown';
-  await markFullplaySentence(idx, target);
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+  clearInterval(fullPlayTimer);
+  if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
+  stopWordFlash();
+
+  await markFullplaySentence(idx, 'unknown');
+
+  if (textFullPlayMode) {
+    speakText(s.text);
+  } else if (s.youtube_video_id && ytPlayer && ytPlayer.seekTo) {
+    // Set replay speed (0.5x or 1x)
+    if (ytPlayer.setPlaybackRate) ytPlayer.setPlaybackRate(replaySpeed);
+    ytPlayer.seekTo(s.start_time || 0, true);
+    ytPlayer.playVideo();
+    var duration = ((s.end_time || 0) - (s.start_time || 0)) * 1000;
+    // Adjust wait time based on replay speed
+    var waitTime = (duration / replaySpeed) + 500;
+    setTimeout(function() {
+      // Restore normal speed and resume
+      if (ytPlayer && ytPlayer.setPlaybackRate) ytPlayer.setPlaybackRate(1);
+      startFullPlayTracking();
+    }, waitTime);
+  } else {
+    startFullPlayTracking();
+  }
+}
+
+function setReplaySpeed(speed) {
+  replaySpeed = speed;
+  localStorage.setItem('replaySpeed', speed);
+  toast('다시 재생 속도: ' + (speed === 1 ? '원래 속도 (1x)' : '느리게 (0.5x)'));
+}
+
+function setReviewListenFirst(val) {
+  reviewListenFirst = val;
+  localStorage.setItem('reviewListenFirst', val);
+  toast(val ? '듣기 먼저 모드 (Listening)' : '보기 먼저 모드 (Reading)');
+}
+
+function setFontSize(size) {
+  size = parseInt(size);
+  appFontSize = size;
+  localStorage.setItem('appFontSize', size);
+  applyFontSize();
+  var label = document.getElementById('font-size-label');
+  if (label) label.textContent = size + 'px';
+  var preview = document.getElementById('font-preview-text');
+  if (preview) preview.style.fontSize = size + 'px';
+}
+
+function applyFontSize() {
+  document.documentElement.style.setProperty('--app-font-size', appFontSize + 'px');
+}
+applyFontSize();
+
+// ── 콩글리시 (한글 발음 변환) ──────────────────────────
+function toggleKonglish(on) {
+  konglishEnabled = on;
+  localStorage.setItem('konglishEnabled', on);
+  var label = document.getElementById('konglish-label');
+  if (label) label.textContent = on ? 'ON' : 'OFF';
+  toast(on ? '콩글리시 ON - 한글 발음 표시' : '콩글리시 OFF');
+}
+
+function toKonglish(text) {
+  if (!text) return '';
+  return text.split(/\s+/).map(function(w) {
+    return wordToKonglish(w.toLowerCase().replace(/[^a-z'-]/g, ''));
+  }).join(' ');
+}
+
+function wordToKonglish(w) {
+  if (!w) return '';
+  // Common word exceptions for natural pronunciation
+  var exceptions = {
+    'the': '더', 'a': '어', 'an': '앤', 'i': '아이', 'my': '마이', 'you': '유', 'your': '유어',
+    'we': '위', 'our': '아워', 'they': '데이', 'their': '데어', 'he': '히', 'she': '쉬',
+    'his': '히즈', 'her': '허', 'it': '잇', 'its': '잇츠', 'is': '이즈', 'are': '아',
+    'was': '워즈', 'were': '워', 'be': '비', 'been': '빈', 'being': '비잉',
+    'have': '해브', 'has': '해즈', 'had': '해드', 'do': '두', 'does': '더즈', 'did': '디드',
+    'will': '윌', 'would': '우드', 'can': '캔', 'could': '쿠드',
+    'should': '슈드', 'shall': '셸', 'may': '메이', 'might': '마잇',
+    'must': '머스트', 'need': '니드', 'not': '낫', 'no': '노', 'yes': '예스',
+    'this': '디스', 'that': '댓', 'these': '디즈', 'those': '도즈',
+    'what': '왓', 'which': '위치', 'who': '후', 'whom': '훔', 'whose': '후즈',
+    'where': '웨어', 'when': '웬', 'why': '와이', 'how': '하우',
+    'if': '이프', 'then': '덴', 'than': '댄', 'but': '벗', 'and': '앤드', 'or': '오어',
+    'so': '쏘', 'for': '포', 'of': '오브', 'to': '투', 'in': '인', 'on': '온',
+    'at': '앳', 'by': '바이', 'with': '위드', 'from': '프롬', 'up': '업', 'out': '아웃',
+    'about': '어바웃', 'into': '인투', 'over': '오버', 'after': '애프터',
+    'all': '올', 'also': '올쏘', 'just': '저스트', 'like': '라이크',
+    'know': '노우', 'think': '띵크', 'make': '메이크', 'take': '테이크',
+    'come': '컴', 'go': '고', 'get': '겟', 'give': '기브', 'say': '세이',
+    'see': '시', 'look': '룩', 'find': '파인드', 'here': '히어', 'there': '데어',
+    'thing': '띵', 'time': '타임', 'people': '피플', 'way': '웨이',
+    'day': '데이', 'man': '맨', 'woman': '우먼', 'world': '월드',
+    'because': '비코즈', 'through': '쓰루', 'before': '비포', 'between': '비트윈',
+    'each': '이치', 'very': '베리', 'only': '온리', 'really': '리얼리',
+    'most': '모스트', 'other': '아더', 'some': '썸', 'many': '매니',
+    'new': '뉴', 'good': '굿', 'great': '그레잇', 'right': '라잇', 'still': '스틸',
+    'own': '오운', 'try': '트라이', 'back': '백', 'use': '유즈', 'work': '워크',
+    'even': '이븐', 'want': '원트', 'first': '퍼스트', 'any': '애니',
+    'never': '네버', 'again': '어겐', 'always': '올웨이즈', 'already': '올레디',
+    'learn': '런', 'language': '랭귀지', 'english': '잉글리시', 'word': '워드',
+    'words': '워즈', 'sentence': '센텐스', 'video': '비디오', 'watch': '워치',
+    'listen': '리슨', 'read': '리드', 'write': '라이트', 'speak': '스피크',
+    'study': '스터디', 'practice': '프랙티스', 'understand': '언더스탠드',
+    'remember': '리멤버', 'forget': '포겟', 'start': '스타트', 'stop': '스탑',
+    'help': '헬프', 'let': '렛', 'keep': '킵', 'put': '풋', 'run': '런',
+    'long': '롱', 'little': '리틀', 'much': '머치', 'more': '모어',
+    'well': '웰', 'now': '나우', 'old': '올드', 'big': '빅',
+    'high': '하이', 'same': '세임', 'different': '디퍼런트', 'small': '스몰',
+    'large': '라지', 'next': '넥스트', 'early': '얼리', 'young': '영',
+    'important': '임포턴트', 'few': '퓨', 'able': '에이블', 'free': '프리',
+    'sure': '슈어', 'true': '트루', 'real': '리얼', 'full': '풀',
+    'show': '쇼', 'every': '에브리', 'done': '던', 'please': '플리즈',
+    'thank': '땡크', 'sorry': '쏘리', 'hello': '헬로', 'one': '원',
+    'two': '투', 'three': '쓰리', 'four': '포', 'five': '파이브',
+    'don\'t': '돈트', 'doesn\'t': '더즌트', 'didn\'t': '디든트',
+    'won\'t': '원트', 'can\'t': '캔트', 'couldn\'t': '쿠든트',
+    'shouldn\'t': '슈든트', 'wouldn\'t': '우든트', 'isn\'t': '이즌트',
+    'aren\'t': '아른트', 'wasn\'t': '워즌트', 'weren\'t': '워른트',
+    'i\'m': '아임', 'i\'ll': '아일', 'i\'ve': '아이브', 'i\'d': '아이드',
+    'you\'re': '유어', 'you\'ll': '유을', 'you\'ve': '유브', 'you\'d': '유드',
+    'he\'s': '히즈', 'she\'s': '쉬즈', 'it\'s': '잇츠', 'we\'re': '위어',
+    'we\'ll': '위을', 'we\'ve': '위브', 'they\'re': '데이어', 'they\'ll': '데이을',
+    'they\'ve': '데이브', 'that\'s': '댓츠', 'there\'s': '데어즈',
+    'let\'s': '렛츠', 'what\'s': '왓츠', 'here\'s': '히어즈',
+    'input': '인풋', 'comprehensible': '컴프리헨서블', 'vocabulary': '버캐뷸러리',
+    'memorizing': '메모라이징', 'boring': '보링', 'slow': '슬로우',
+    'effective': '이펙티브', 'traditional': '트래디셔널', 'method': '메서드',
+    'actually': '액추얼리', 'example': '이그잼플', 'possible': '파서블',
+    'follow': '팔로우', 'subscribe': '섭스크라이브', 'share': '셰어',
+    'check': '체크', 'playlist': '플레이리스트', 'completely': '컴플리틀리',
+    'classroom': '클래스룸', 'instruction': '인스트럭션', 'beneficial': '베니피셜',
+    'minutes': '미닛츠', 'minute': '미닛', 'personal': '퍼스널',
+    'instagram': '인스타그램', 'notification': '노티피케이션',
+    'previous': '프리비어스', 'fluent': '플루언트', 'animal': '애니멀',
+    'outside': '아웃사이드', 'door': '도어', 'dog': '도그',
+    'structure': '스트럭쳐', 'grammar': '그래머', 'skill': '스킬', 'skills': '스킬즈',
+    'thinking': '띵킹', 'without': '위다웃', 'prompt': '프롬프트',
+    'chat': '챗', 'summary': '서머리', 'steps': '스텝스', 'step': '스텝',
+  };
+  if (exceptions[w]) return exceptions[w];
+
+  // Rule-based fallback conversion
+  var result = '';
+  var i = 0;
+  var len = w.length;
+  while (i < len) {
+    var c = w[i], c2 = i+1<len ? w[i+1] : '', c3 = i+2<len ? w[i+2] : '';
+    var tri = c+c2+c3, di = c+c2;
+
+    // Trigraphs
+    if (tri === 'tch') { result += '치'; i+=3; continue; }
+    if (tri === 'ght') { result += '트'; i+=3; continue; }
+    if (tri === 'tion') { result += '션'; i+=4; continue; }
+    if (tri === 'sion') { result += '션'; i+=4; continue; }
+    if (tri === 'ous') { result += '어스'; i+=3; continue; }
+    if (tri === 'ing') { result += '잉'; i+=3; continue; }
+    if (tri === 'ble') { result += '블'; i+=3; continue; }
+    if (tri === 'ple') { result += '플'; i+=3; continue; }
+    if (tri === 'tle') { result += '틀'; i+=3; continue; }
+    if (tri === 'ful') { result += '풀'; i+=3; continue; }
+    if (tri === 'ive') { result += '이브'; i+=3; continue; }
+    if (tri === 'ize') { result += '아이즈'; i+=3; continue; }
+    if (tri === 'ous') { result += '어스'; i+=3; continue; }
+    if (tri === 'age') { result += '이지'; i+=3; continue; }
+    if (tri === 'ure') { result += '어'; i+=3; continue; }
+    if (tri === 'ual') { result += '추얼'; i+=3; continue; }
+    if (tri === 'ily') { result += '일리'; i+=3; continue; }
+
+    // Digraphs
+    if (di === 'th') { result += '드'; i+=2; continue; }
+    if (di === 'sh') { result += '쉬'; i+=2; continue; }
+    if (di === 'ch') { result += '치'; i+=2; continue; }
+    if (di === 'ph') { result += '프'; i+=2; continue; }
+    if (di === 'wh') { result += '우'; i+=2; continue; }
+    if (di === 'ck') { result += '크'; i+=2; continue; }
+    if (di === 'ng') { result += '응'; i+=2; continue; }
+    if (di === 'qu') { result += '쿼'; i+=2; continue; }
+    if (di === 'oo') { result += '우'; i+=2; continue; }
+    if (di === 'ee') { result += '이'; i+=2; continue; }
+    if (di === 'ea') { result += '이'; i+=2; continue; }
+    if (di === 'ai') { result += '에이'; i+=2; continue; }
+    if (di === 'ay') { result += '에이'; i+=2; continue; }
+    if (di === 'ey') { result += '에이'; i+=2; continue; }
+    if (di === 'oi') { result += '오이'; i+=2; continue; }
+    if (di === 'oy') { result += '오이'; i+=2; continue; }
+    if (di === 'ou') { result += '아우'; i+=2; continue; }
+    if (di === 'ow' && i+2>=len) { result += '오우'; i+=2; continue; }
+    if (di === 'ow') { result += '아우'; i+=2; continue; }
+    if (di === 'aw') { result += '오'; i+=2; continue; }
+    if (di === 'au') { result += '오'; i+=2; continue; }
+    if (di === 'er') { result += '어'; i+=2; continue; }
+    if (di === 'or') { result += '오어'; i+=2; continue; }
+    if (di === 'ar') { result += '아'; i+=2; continue; }
+    if (di === 'ir') { result += '어'; i+=2; continue; }
+    if (di === 'ur') { result += '어'; i+=2; continue; }
+    if (di === 'al' && (i+2>=len || !'aeiou'.includes(c3))) { result += '올'; i+=2; continue; }
+
+    // Single consonants
+    if (c === 'b') { result += (i+1>=len) ? '브' : '브'; i++; continue; }
+    if (c === 'c') {
+      if ('eiy'.includes(c2)) { result += '스'; } else { result += '크'; }
+      i++; continue;
+    }
+    if (c === 'd') { result += (i+1>=len) ? '드' : '드'; i++; continue; }
+    if (c === 'f') { result += '프'; i++; continue; }
+    if (c === 'g') {
+      if ('eiy'.includes(c2) && di !== 'ge') { result += '지'; } else { result += '그'; }
+      i++; continue;
+    }
+    if (c === 'h') { result += '흐'; i++; continue; }
+    if (c === 'j') { result += '지'; i++; continue; }
+    if (c === 'k') { result += '크'; i++; continue; }
+    if (c === 'l') { result += '르'; i++; continue; }
+    if (c === 'm') { result += '므'; i++; continue; }
+    if (c === 'n') { result += '느'; i++; continue; }
+    if (c === 'p') { result += '프'; i++; continue; }
+    if (c === 'r') { result += '르'; i++; continue; }
+    if (c === 's') { result += '스'; i++; continue; }
+    if (c === 't') { result += '트'; i++; continue; }
+    if (c === 'v') { result += '브'; i++; continue; }
+    if (c === 'w') { result += '우'; i++; continue; }
+    if (c === 'x') { result += '크스'; i++; continue; }
+    if (c === 'y') {
+      if (i === 0) { result += '이'; } else { result += '이'; }
+      i++; continue;
+    }
+    if (c === 'z') { result += '즈'; i++; continue; }
+
+    // Vowels
+    if (c === 'a') {
+      if (c2 === 'e' || (c2 && !'aeiou'.includes(c2) && c3 === 'e')) { result += '에이'; }
+      else { result += '애'; }
+      i++; continue;
+    }
+    if (c === 'e') {
+      if (i+1 >= len) { i++; continue; } // silent e
+      result += '에';
+      i++; continue;
+    }
+    if (c === 'i') {
+      if (c2 && !'aeiou'.includes(c2) && c3 === 'e') { result += '아이'; }
+      else { result += '이'; }
+      i++; continue;
+    }
+    if (c === 'o') {
+      if (c2 === 'e' || (i+1>=len)) { result += '오'; }
+      else { result += '오'; }
+      i++; continue;
+    }
+    if (c === 'u') {
+      result += '유';
+      i++; continue;
+    }
+
+    result += c;
+    i++;
+  }
+  return result;
 }
 
 async function markFullplaySentence(idx, targetStatus) {
@@ -1776,8 +2126,8 @@ async function markFullplaySentence(idx, targetStatus) {
     s.status = 'unknown';
     el.classList.add('marked-unknown');
     if (dot) { dot.className = 'sentence-status-dot unknown'; dot.setAttribute('style', 'margin-top:6px;'); }
-    // Show translation for this sentence
-    if (transEl) {
+    // Show translation only when translation mode is ON
+    if (transEl && fullplayTransEnabled) {
       transEl.style.display = 'block';
       if (transEl.dataset.loaded !== 'true') {
         transEl.textContent = '번역 중...';
@@ -1839,23 +2189,7 @@ document.addEventListener('keydown', async (e) => {
   if (fullPlayPaused) return;
   if (key === fk.unknown) {
     e.preventDefault();
-    const idx = fullPlayCurrentIdx;
-    const s = fullPlaySentences[idx];
-    if (!s) return;
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-    clearInterval(fullPlayTimer);
-    await markFullplaySentence(idx, 'unknown');
-    if (textFullPlayMode) {
-      speakText(s.text);
-    } else if (s.youtube_video_id && ytPlayer && ytPlayer.seekTo) {
-      ytPlayer.seekTo(s.start_time || 0, true);
-      ytPlayer.playVideo();
-      var duration = ((s.end_time || 0) - (s.start_time || 0)) * 1000;
-      setTimeout(function() { startFullPlayTracking(); }, duration + 500);
-    } else {
-      startFullPlayTracking();
-    }
+    await replayAsUnknown(fullPlayCurrentIdx);
   } else if (key === fk.known) {
     e.preventDefault();
     await markFullplaySentence(fullPlayCurrentIdx, 'known');
@@ -1901,6 +2235,7 @@ function toggleFullPlayPause() {
     btn.classList.add('btn-green');
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
     clearInterval(fullPlayTimer);
+    if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     stopWordFlash();
   } else {
@@ -1946,11 +2281,56 @@ function updateWordFlashUI() {
   }
 }
 
+// Current word flash sentence info for real-time sync
+var wordFlashSentence = null;
+var wordFlashLastStep = -1;
+
 function stopWordFlash() {
   wordFlashTimers.forEach(t => clearTimeout(t));
   wordFlashTimers = [];
   wordFlashWords = [];
   wordFlashIdx = 0;
+  wordFlashSentence = null;
+  wordFlashLastStep = -1;
+}
+
+// Called from requestAnimationFrame loop in startFullPlayTracking
+function updateWordFlashSync(rawTime) {
+  if (!wordFlashSentence || !wordFlashWords.length) return;
+  const s = wordFlashSentence;
+  const sentStart = s.start_time;
+  const sentEnd = s.end_time;
+  const sentDuration = sentEnd - sentStart;
+  if (!sentDuration || sentDuration <= 0) return;
+
+  // Apply same offset as sentence tracking for word-level sync
+  const now = rawTime + ytTimeOffset;
+
+  const wordEl = document.getElementById('word-flash-word');
+  const counterEl = document.getElementById('word-flash-counter');
+  const box = document.getElementById('word-flash-box');
+  if (!wordEl) return;
+
+  if (now < sentStart || now >= sentEnd) {
+    if (box) box.classList.remove('active');
+    return;
+  }
+
+  const elapsed = now - sentStart;
+  const progress = Math.min(elapsed / sentDuration, 1.0);
+  const stepSize = 2;
+  const totalSteps = Math.ceil(wordFlashWords.length / stepSize);
+  const step = Math.min(Math.floor(progress * totalSteps), totalSteps - 1);
+
+  if (step !== wordFlashLastStep) {
+    wordFlashLastStep = step;
+    const startIdx = step * stepSize;
+    wordFlashIdx = startIdx;
+    const pair = wordFlashWords.slice(startIdx, startIdx + stepSize).join(' ');
+    wordEl.textContent = pair;
+    if (counterEl) counterEl.textContent = `${Math.min(startIdx + stepSize, wordFlashWords.length)} / ${wordFlashWords.length}`;
+    if (box) box.classList.add('active');
+  }
 }
 
 function startWordFlash(sentence) {
@@ -1967,55 +2347,51 @@ function startWordFlash(sentence) {
   const box = document.getElementById('word-flash-box');
   if (!wordEl) return;
 
-  // Show truncated sentence context
   if (sentenceEl) {
     sentenceEl.textContent = text.length > 60 ? text.substring(0, 57) + '...' : text;
   }
 
-  // Calculate timing based on sentence duration
-  let totalDuration;
-  if (sentence.start_time !== undefined && sentence.end_time !== undefined && sentence.end_time > sentence.start_time) {
-    totalDuration = (sentence.end_time - sentence.start_time) * 1000;
+  const hasTimestamps = sentence.start_time !== undefined && sentence.end_time !== undefined && sentence.end_time > sentence.start_time;
+
+  if (hasTimestamps && ytPlayer && ytPlayer.getCurrentTime) {
+    // Real-time sync: store sentence info, updates happen in requestAnimationFrame loop
+    wordFlashSentence = sentence;
+    wordFlashLastStep = -1;
+    // Show first word immediately
+    const pair = wordFlashWords.slice(0, 2).join(' ');
+    wordEl.textContent = pair;
+    if (counterEl) counterEl.textContent = `${Math.min(2, wordFlashWords.length)} / ${wordFlashWords.length}`;
+    if (box) box.classList.add('active');
   } else {
-    // For text content without timestamps, estimate ~300ms per word
-    totalDuration = wordFlashWords.length * 300;
-  }
-  const wordInterval = totalDuration / wordFlashWords.length;
+    // Timer-based fallback for text content without timestamps
+    wordFlashSentence = null;
+    const totalDuration = wordFlashWords.length * 300;
+    const stepSize = 2;
+    const totalSteps = Math.ceil(wordFlashWords.length / stepSize);
+    const stepInterval = totalDuration / totalSteps;
 
-  // Display 2 words at a time
-  const stepSize = 2;
-  const totalSteps = Math.ceil(wordFlashWords.length / stepSize);
-  const stepInterval = totalDuration / totalSteps;
-
-  wordFlashIdx = 0;
-  function showWord(step) {
-    const startIdx = step * stepSize;
-    if (startIdx >= wordFlashWords.length) {
-      if (box) box.classList.remove('active');
-      return;
-    }
-    wordFlashIdx = startIdx;
-    const pair = wordFlashWords.slice(startIdx, startIdx + stepSize).join(' ');
-    // Fade out
-    wordEl.classList.add('fade');
-    const t1 = setTimeout(() => {
+    wordFlashIdx = 0;
+    function showWord(step) {
+      const startIdx = step * stepSize;
+      if (startIdx >= wordFlashWords.length) {
+        if (box) box.classList.remove('active');
+        return;
+      }
+      wordFlashIdx = startIdx;
+      const pair = wordFlashWords.slice(startIdx, startIdx + stepSize).join(' ');
       wordEl.textContent = pair;
       if (counterEl) counterEl.textContent = `${Math.min(startIdx + stepSize, wordFlashWords.length)} / ${wordFlashWords.length}`;
-      wordEl.classList.remove('fade');
       if (box) box.classList.add('active');
-    }, 80);
-    wordFlashTimers.push(t1);
-
-    // Schedule next pair
-    if (startIdx + stepSize < wordFlashWords.length) {
-      const t2 = setTimeout(() => showWord(step + 1), stepInterval);
-      wordFlashTimers.push(t2);
-    } else {
-      const t3 = setTimeout(() => { if (box) box.classList.remove('active'); }, stepInterval);
-      wordFlashTimers.push(t3);
+      if (startIdx + stepSize < wordFlashWords.length) {
+        const t2 = setTimeout(() => showWord(step + 1), stepInterval);
+        wordFlashTimers.push(t2);
+      } else {
+        const t3 = setTimeout(() => { if (box) box.classList.remove('active'); }, stepInterval);
+        wordFlashTimers.push(t3);
+      }
     }
+    showWord(0);
   }
-  showWord(0);
 }
 
 async function saveWordFlashWords() {
@@ -2041,6 +2417,7 @@ async function saveWordFlashWords() {
 
 function endFullPlay() {
   clearInterval(fullPlayTimer);
+  if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
   clearKaraokeTimers();
   stopWordFlash();
   fullPlayActive = false;
@@ -2101,18 +2478,29 @@ function startReviewAll() {
 
   const listEl = document.getElementById('review-all-list');
   listEl.innerHTML = reviewItems.map((item, i) => `
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--bg2); border:1px solid var(--border); border-radius:10px;" id="rv-all-item-${i}">
+    <div class="sent-all-row" style="justify-content:space-between; cursor:pointer;" id="rv-all-item-${i}" onclick="playReviewAllItem(${i})">
       <div style="flex:1; min-width:0;">
-        <span style="font-weight:600; font-size:${currentReviewType === 'word' ? '16px' : '14px'};">${item.text}</span>
+        <span style="font-weight:600; font-size:var(--app-font-size, ${currentReviewType === 'word' ? '16px' : '14px'});">${item.text}</span>
         <span style="color:var(--amber); font-size:10px; margin-left:8px;">Lv${item.level} ${levelLabels[item.level] || ''}</span>
+        ${konglishEnabled ? '<div style="font-size:11px; color:var(--amber); margin-top:2px;">' + toKonglish(item.text) + '</div>' : ''}
         ${item.video_title ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + item.video_title + '</div>' : ''}
       </div>
       <div style="display:flex; gap:6px; flex-shrink:0;">
-        <button id="rv-know-${i}" onclick="selectReviewAll(${i}, true)" style="padding:4px 12px; border-radius:6px; border:1px solid var(--green); background:transparent; color:var(--green); font-size:12px; cursor:pointer;">✅ 기억남</button>
-        <button id="rv-forgot-${i}" onclick="selectReviewAll(${i}, false)" style="padding:4px 12px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red); font-size:12px; cursor:pointer;">❌ 잊음</button>
+        <button id="rv-know-${i}" onclick="event.stopPropagation();selectReviewAll(${i}, true)" style="padding:5px 16px; border-radius:6px; border:1px solid var(--green); background:transparent; color:var(--green); font-size:12px; cursor:pointer; white-space:nowrap;">✅ 기억남</button>
+        <button id="rv-forgot-${i}" onclick="event.stopPropagation();selectReviewAll(${i}, false)" style="padding:5px 16px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red); font-size:12px; cursor:pointer; white-space:nowrap;">❌ 잊음</button>
       </div>
     </div>
   `).join('');
+}
+
+function playReviewAllItem(idx) {
+  var item = reviewItems[idx];
+  if (!item) return;
+  if (item.youtube_video_id && item.start_time) {
+    forcePlayFromTo(item.youtube_video_id, item.start_time || 0, item.end_time || 0);
+  } else {
+    speakText(item.text);
+  }
 }
 
 function selectReviewAll(idx, correct) {
@@ -2228,7 +2616,8 @@ function showReviewItem() {
   const pct = Math.round(reviewIndex / reviewItems.length * 100);
   document.getElementById('review-progress-bar').style.width = pct + '%';
 
-  const typeLabel = item.item_type === 'word' ? '단어' : '문장';
+  const isYTItem = !!(item.youtube_video_id);
+  const typeLabel = item.item_type === 'word' ? '단어' : (isYTItem ? '🎬 문장' : '📝 문장');
   document.getElementById('review-meta').textContent =
     `${typeLabel} 복습 | ${item.video_title || ''} | Level ${item.level}/7`;
 
@@ -2251,6 +2640,12 @@ function showReviewItem() {
   document.getElementById('review-count-text').textContent =
     `${reviewIndex + 1} / ${reviewItems.length} 항목`;
   reviewRevealed = false;
+
+  // 듣기 먼저 모드: YouTube 문장이면 소리를 먼저 자동 재생
+  if (reviewListenFirst && isYTItem && item.item_type === 'sentence' && item.start_time) {
+    document.getElementById('review-sentence').textContent = '👂 듣고 있습니다... (클릭하면 문장 확인)';
+    forcePlayFromTo(item.youtube_video_id, item.start_time || 0, item.end_time || 0);
+  }
 }
 
 function revealReview() {
@@ -2365,73 +2760,25 @@ let unknownSentencesData = [];
 
 async function loadUnknownSentences() {
   unknownSentencesData = await api('/api/sentences/unknown');
-  const el = document.getElementById('unknown-sentences-list');
-  // Update video toggle button state
-  const btn2 = document.getElementById('unknown-video-toggle-btn');
-  if (btn2) {
-    btn2.textContent = videoEnabled ? '영상 ON' : '영상 OFF';
-    if (videoEnabled) btn2.classList.add('on'); else btn2.classList.remove('on');
-  }
+  const listEl = document.getElementById('sent-all-list');
+  const countEl = document.getElementById('sent-all-count');
   if (!unknownSentencesData.length) {
-    document.getElementById('unknown-sent-all-mode').style.display = 'none';
-    el.style.display = '';
-    el.innerHTML = '<div class="empty"><div class="empty-icon">&#128170;</div><h3>모르는 문장이 없습니다!</h3><p>모든 문장을 알고 있거나 아직 학습을 시작하지 않았습니다.</p></div>';
+    if (countEl) countEl.textContent = '';
+    listEl.innerHTML = '<div class="empty"><div class="empty-icon">&#128170;</div><h3>모르는 문장이 없습니다!</h3><p>모든 문장을 알고 있거나 아직 학습을 시작하지 않았습니다.</p></div>';
     return;
   }
-  // 목록 모드용 렌더링
-  const levelLabels = ['Lv0 방금','Lv1','Lv2','Lv3','Lv4','Lv5','Lv6'];
-  el.innerHTML = `<p style="color:var(--text2); margin-bottom:16px;">${unknownSentencesData.length}개의 모르는 문장 (에빙하우스 순서)</p>` +
-    unknownSentencesData.map((s, i) => `
-      <div class="sentence-item">
-        <div class="sentence-actions">
-          <button class="btn-play" onclick="event.stopPropagation();playUnknownSentenceByIdx(this,${i})" title="재생">&#9654;</button>
-        </div>
-        <div class="sentence-text study-sentence" id="unknown-sent-${s.id}">
-          ${s.text}
-          <div class="sentence-translation translation-text" id="trans-unknown-${s.id}" style="display:${translationEnabled?'block':'none'}"></div>
-        </div>
-        <div class="sentence-source">${s.video_title || ''} <span style="color:var(--amber);font-size:10px;">${levelLabels[s.review_level] || ''}</span></div>
-      </div>
-    `).join('');
-
-  if (translationEnabled) {
-    for (const s of unknownSentencesData) {
-      const transEl = document.getElementById(`trans-unknown-${s.id}`);
-      if (transEl) showTranslation(transEl, s.id);
-    }
-  }
-  renderSentMode();
+  renderSentAllList();
 }
 
-// ── 모르는 문장 전체/목록 모드 ──
-let sentMode = localStorage.getItem('sentMode') || 'all';
+// ── 모르는 문장 ──
 let sentAllSelections = {};
 
 function switchSentMode(mode) {
-  sentMode = mode;
-  localStorage.setItem('sentMode', mode);
+  // kept for compatibility
   renderSentMode();
 }
 
-function renderSentMode() {
-  const allBtn = document.getElementById('sent-mode-all-btn');
-  const listBtn = document.getElementById('sent-mode-list-btn');
-  const allView = document.getElementById('unknown-sent-all-mode');
-  const listView = document.getElementById('unknown-sentences-list');
-
-  if (sentMode === 'all') {
-    allBtn.style.background = 'var(--primary)'; allBtn.style.color = '#fff';
-    listBtn.style.background = 'var(--bg2)'; listBtn.style.color = 'var(--text2)';
-    allView.style.display = 'block';
-    listView.style.display = 'none';
-    renderSentAllList();
-  } else {
-    listBtn.style.background = 'var(--primary)'; listBtn.style.color = '#fff';
-    allBtn.style.background = 'var(--bg2)'; allBtn.style.color = 'var(--text2)';
-    allView.style.display = 'none';
-    listView.style.display = '';
-  }
-}
+function renderSentMode() { renderSentAllList(); }
 
 function renderSentAllList() {
   sentAllSelections = {};
@@ -2442,16 +2789,17 @@ function renderSentAllList() {
     return;
   }
   listEl.innerHTML = unknownSentencesData.map((s, i) => `
-    <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;" id="sent-all-item-${i}">
-      <button onclick="event.stopPropagation();speakText('${s.text.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:14px;flex-shrink:0;" title="재생">🔊</button>
+    <div class="sent-all-row" id="sent-all-item-${i}" onclick="playSentAllItem(${i})" style="cursor:pointer;">
+      <span style="font-size:14px;flex-shrink:0;">🔊</span>
       <div style="flex:1; min-width:0;">
         <div style="font-size:13px; font-weight:500;">${s.text}</div>
+        ${konglishEnabled ? '<div style="font-size:11px; color:var(--amber); margin-top:2px;">' + toKonglish(s.text) + '</div>' : ''}
         <div style="font-size:11px; color:var(--text3);">${s.video_title || ''}</div>
         <div id="sent-all-trans-${s.id}" style="display:none; font-size:12px; color:var(--amber); margin-top:2px;"></div>
       </div>
       <div style="display:flex; gap:4px; flex-shrink:0;">
-        <button id="sent-know-${i}" onclick="selectSentAll(${i}, true)" style="padding:3px 10px; border-radius:6px; border:1px solid var(--green); background:transparent; color:var(--green); font-size:11px; cursor:pointer;">✅안다</button>
-        <button id="sent-forgot-${i}" onclick="selectSentAll(${i}, false)" style="padding:3px 10px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red); font-size:11px; cursor:pointer;">❌모름</button>
+        <button id="sent-know-${i}" onclick="event.stopPropagation();selectSentAll(${i}, true)" style="padding:5px 16px; border-radius:6px; border:1px solid var(--green); background:transparent; color:var(--green); font-size:12px; cursor:pointer; white-space:nowrap;">✅ 안다</button>
+        <button id="sent-forgot-${i}" onclick="event.stopPropagation();selectSentAll(${i}, false)" style="padding:5px 16px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red); font-size:12px; cursor:pointer; white-space:nowrap;">❌ 모름</button>
       </div>
     </div>
   `).join('');
@@ -2465,6 +2813,16 @@ function renderSentAllList() {
   }
 }
 
+function playSentAllItem(idx) {
+  var s = unknownSentencesData[idx];
+  if (!s) return;
+  if (s.youtube_video_id) {
+    forcePlayFromTo(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
+  } else {
+    speakText(s.text);
+  }
+}
+
 function selectSentAll(idx, known) {
   sentAllSelections[idx] = known;
   const knowBtn = document.getElementById('sent-know-' + idx);
@@ -2475,11 +2833,13 @@ function selectSentAll(idx, known) {
   } else {
     forgotBtn.style.background = 'var(--red)'; forgotBtn.style.color = '#fff';
     knowBtn.style.background = 'transparent'; knowBtn.style.color = 'var(--green)';
-    // 모름 → 해석 표시
-    const s = unknownSentencesData[idx];
-    if (s) {
-      const el = document.getElementById('sent-all-trans-' + s.id);
-      if (el && !el.textContent) { el.style.display = 'block'; showTranslation(el, s.id); }
+    // 모름 → 해석 표시 (해석 ON일 때만)
+    if (translationEnabled) {
+      const s = unknownSentencesData[idx];
+      if (s) {
+        const el = document.getElementById('sent-all-trans-' + s.id);
+        if (el && !el.textContent) { el.style.display = 'block'; showTranslation(el, s.id); }
+      }
     }
   }
 }
@@ -2532,14 +2892,39 @@ function playUnknownSentenceByIdx(btn, idx) {
     var transEl = document.getElementById('trans-unknown-' + s.id);
     if (transEl) showTranslation(transEl, s.id);
   }
-  // Play audio: YouTube if video ON, otherwise TTS
-  if (videoEnabled && s.youtube_video_id) {
-    playFromTo(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
+  // Always play YouTube video if available, otherwise TTS
+  if (s.youtube_video_id) {
+    forcePlayFromTo(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
   } else {
     speakText(s.text);
   }
   // Karaoke animation always runs
   startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+}
+
+// Play video regardless of videoEnabled setting (for review/unknown sentences)
+function forcePlayFromTo(ytVideoId, startTime, endTime) {
+  if (!ytVideoId) return;
+  // Show video player
+  var container = document.getElementById('yt-container');
+  if (container) container.style.display = 'block';
+  clearTimeout(sentenceEndTimer);
+  initPlayer(ytVideoId);
+  const doSeek = () => {
+    if (ytPlayer && ytPlayer.seekTo) {
+      ytPlayer.seekTo(startTime, true);
+      ytPlayer.playVideo();
+      if (endTime > startTime) {
+        const dur = (endTime - startTime) * 1000;
+        sentenceEndTimer = setTimeout(() => {
+          if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+        }, dur + 300);
+      }
+    } else {
+      setTimeout(doSeek, 500);
+    }
+  };
+  setTimeout(doSeek, 300);
 }
 
 // ── Unknown Words ──────────────────────────────────────
@@ -2625,6 +3010,7 @@ function renderBulkAllList() {
         <span style="font-weight:600;">${w.word}</span>
         <span id="bulk-icon-${i}" style="font-size:12px; min-width:14px;"></span>
       </div>
+      ${konglishEnabled ? '<div style="font-size:10px; color:var(--amber); margin-top:2px;">' + toKonglish(w.word) + '</div>' : ''}
       <div id="bulk-meaning-${i}" style="display:none; font-size:11px; color:var(--amber); padding:2px 4px; text-align:center; max-width:150px; word-break:keep-all;"></div>
     </div>
   `).join('');
@@ -2705,7 +3091,7 @@ function endBulkWordStudy() {
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   document.getElementById('bulk-word-study').style.display = 'none';
   unknownWordsData = [];
-  loadUnknownWords().then(() => renderWordMode());
+  showPage('dashboard');
 }
 
 function showBulkWord() {
@@ -2722,11 +3108,16 @@ function showBulkWord() {
   var pct = (bulkWordIdx / unknownWordsData.length) * 100;
   document.getElementById('word-study-progress').style.width = pct + '%';
   document.getElementById('word-study-meta').textContent = (bulkWordIdx + 1) + ' / ' + unknownWordsData.length;
-  document.getElementById('word-study-word').textContent = w.word;
+  var wordEl = document.getElementById('word-study-word');
+  if (konglishEnabled) {
+    wordEl.innerHTML = w.word + '<div style="font-size:16px;color:var(--amber);font-weight:400;margin-top:4px;">' + toKonglish(w.word) + '</div>';
+  } else {
+    wordEl.textContent = w.word;
+  }
   document.getElementById('word-study-meaning').style.display = 'none';
   document.getElementById('word-study-meaning').textContent = '';
-  document.getElementById('word-study-buttons').style.display = 'none';
-  document.getElementById('word-study-hint').textContent = '클릭하면 뜻이 보입니다';
+  document.getElementById('word-study-buttons').style.display = 'flex';
+  document.getElementById('word-study-hint').textContent = '단어를 클릭하면 뜻이 보입니다';
   // Auto-speak the word
   speakText(w.word);
 }
@@ -2981,6 +3372,28 @@ var origLoadShortcutSettings = loadShortcutSettings;
 loadShortcutSettings = function() {
   origLoadShortcutSettings();
   loadAISettings();
+  // 다시 재생 속도 라디오 버튼 초기화
+  var radios = document.querySelectorAll('input[name="replay-speed"]');
+  radios.forEach(function(r) {
+    r.checked = (parseFloat(r.value) === replaySpeed);
+  });
+  // 듣기 먼저/보기 먼저 라디오 버튼 초기화
+  var ytRadios = document.querySelectorAll('input[name="review-mode-yt"]');
+  ytRadios.forEach(function(r) {
+    r.checked = (r.value === 'listen') === reviewListenFirst;
+  });
+  // 텍스트 크기 슬라이더 초기화
+  var slider = document.getElementById('font-size-slider');
+  if (slider) slider.value = appFontSize;
+  var label = document.getElementById('font-size-label');
+  if (label) label.textContent = appFontSize + 'px';
+  var preview = document.getElementById('font-preview-text');
+  if (preview) preview.style.fontSize = appFontSize + 'px';
+  // 콩글리시 체크박스 초기화
+  var kToggle = document.getElementById('konglish-toggle');
+  if (kToggle) kToggle.checked = konglishEnabled;
+  var kLabel = document.getElementById('konglish-label');
+  if (kLabel) kLabel.textContent = konglishEnabled ? 'ON' : 'OFF';
 };
 
 // ── Playlists ─────────────────────────────────────────
