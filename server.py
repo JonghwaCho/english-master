@@ -17,9 +17,145 @@ from flask import Flask, render_template, jsonify, request
 import database as db
 import youtube_service as yt
 import text_utils
+from queue import Queue
 from srs import get_level_name, format_next_review
 
 app = Flask(__name__)
+
+# ── 단어 뜻 번역 백그라운드 큐 ──────────────────────────
+meaning_queue = Queue()
+
+
+def meaning_worker():
+    """백그라운드 스레드: 큐에서 단어를 꺼내 뜻을 조회하고 DB에 캐싱"""
+    while True:
+        try:
+            word = meaning_queue.get()
+            if word is None:
+                break
+            w = word.lower().strip()
+            if not w:
+                meaning_queue.task_done()
+                continue
+
+            # 이미 캐시에 있으면 스킵
+            conn = db.get_conn()
+            cached = conn.execute("SELECT 1 FROM word_meanings WHERE word = ?", (w,)).fetchone()
+            if cached:
+                conn.close()
+                meaning_queue.task_done()
+                continue
+            conn.close()
+
+            meaning = None
+            source = None
+
+            # 1) AI API 우선 (한국어 뜻 제공)
+            settings = load_ai_settings()
+            if settings.get("api_key"):
+                try:
+                    prompt = f'영어 단어 "{w}"의 뜻을 한국어로 간결하게 설명해주세요. 형식: [품사] 한국어뜻1, 뜻2. 2줄 이내로.'
+                    meaning = call_ai(settings, prompt)
+                    source = "ai"
+                except:
+                    pass
+
+            # 2) AI 실패 시 무료 사전 API (영영사전 fallback)
+            if not meaning:
+                try:
+                    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w)}"
+                    req = urllib.request.Request(url)
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = json_lib.loads(resp.read().decode())
+                        defs = []
+                        for m in data[0].get("meanings", [])[:3]:
+                            pos = m.get("partOfSpeech", "")
+                            d = m.get("definitions", [{}])[0].get("definition", "")
+                            if d:
+                                defs.append(f"[{pos}] {d}")
+                        if defs:
+                            meaning = "\n".join(defs)
+                            source = "dict"
+                except:
+                    pass
+
+            # DB에 저장
+            if meaning and source:
+                try:
+                    conn = db.get_conn()
+                    conn.execute("INSERT OR REPLACE INTO word_meanings (word, meaning, source) VALUES (?, ?, ?)",
+                                 (w, meaning, source))
+                    conn.commit()
+                    conn.close()
+                    logging.info(f"[MeaningWorker] Cached: {w} ({source})")
+                except:
+                    pass
+
+            meaning_queue.task_done()
+        except Exception as e:
+            logging.error(f"[MeaningWorker] Error: {e}")
+            try:
+                meaning_queue.task_done()
+            except:
+                pass
+
+
+# ── 문장 번역 백그라운드 큐 ──────────────────────────────
+sentence_trans_queue = Queue()
+
+
+def sentence_translation_worker():
+    """백그라운드 스레드: 큐에서 문장ID를 꺼내 AI로 번역하고 DB에 저장"""
+    while True:
+        try:
+            sentence_id = sentence_trans_queue.get()
+            if sentence_id is None:
+                break
+
+            conn = db.get_conn()
+            row = conn.execute("SELECT text, translation FROM sentences WHERE id = ?", (sentence_id,)).fetchone()
+            if not row:
+                conn.close()
+                sentence_trans_queue.task_done()
+                continue
+
+            text = row["text"]
+            existing = (row["translation"] or "").strip()
+
+            settings = load_ai_settings()
+            if not settings.get("api_key"):
+                print(f"[TransWorker] No API key, skipping sentence {sentence_id}", flush=True)
+                conn.close()
+                sentence_trans_queue.task_done()
+                continue
+
+            try:
+                prompt = f'다음 영어 문장을 자연스러운 한국어로 번역해주세요. 번역문만 출력하세요.\n\n"{text}"'
+                print(f"[TransWorker] Translating sentence {sentence_id}...", flush=True)
+                translation = call_ai(settings, prompt)
+                if translation:
+                    conn.execute("UPDATE sentences SET translation = ? WHERE id = ?",
+                                 (translation.strip(), sentence_id))
+                    conn.commit()
+                    print(f"[TransWorker] Done: {sentence_id} -> {translation.strip()[:60]}", flush=True)
+            except Exception as e:
+                print(f"[TransWorker] AI error for sentence {sentence_id}: {e}", flush=True)
+
+            conn.close()
+            sentence_trans_queue.task_done()
+        except Exception as e:
+            logging.error(f"[TransWorker] Error: {e}")
+            try:
+                sentence_trans_queue.task_done()
+            except:
+                pass
+
+
+# 워커 스레드 시작 (데몬 모드 = 서버 종료 시 자동 종료)
+meaning_thread = threading.Thread(target=meaning_worker, daemon=True)
+meaning_thread.start()
+sentence_trans_thread = threading.Thread(target=sentence_translation_worker, daemon=True)
+sentence_trans_thread.start()
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 # Disable caching for development
@@ -162,6 +298,8 @@ def api_mark_sentence():
         db.schedule_review(sid, "sentence", level=1)
     elif status == "unknown":
         db.schedule_review(sid, "sentence", level=0)
+        # 백그라운드에서 AI 번역 (모르는 문장 → 고품질 번역 제공)
+        sentence_trans_queue.put(sid)
 
     return jsonify({"ok": True})
 
@@ -184,6 +322,8 @@ def api_add_unknown_word():
     word = data.get("word", "").strip()
     if word:
         db.add_unknown_word(word)
+        # 백그라운드 큐에 추가 → 별도 스레드가 뜻을 조회하여 DB에 캐싱
+        meaning_queue.put(word)
     return jsonify({"ok": True})
 
 
@@ -718,6 +858,126 @@ def api_ai_action():
         return jsonify({"result": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/word-meaning")
+def api_word_meaning():
+    word = request.args.get("word", "").strip().lower()
+    if not word:
+        return jsonify({"error": "단어가 없습니다"}), 400
+
+    conn = db.get_conn()
+
+    # 1단계: DB 캐시 확인 (즉시 반환)
+    cached = conn.execute("SELECT meaning FROM word_meanings WHERE word = ?", (word,)).fetchone()
+    if cached:
+        conn.close()
+        return jsonify({"meaning": cached["meaning"], "source": "cache"})
+
+    meaning = None
+    source = None
+
+    # 2단계: AI API 우선 (한국어 뜻 제공)
+    settings = load_ai_settings()
+    if settings.get("api_key"):
+        try:
+            prompt = f'영어 단어 "{word}"의 뜻을 한국어로 간결하게 설명해주세요. 형식: [품사] 한국어뜻1, 뜻2. 2줄 이내로.'
+            meaning = call_ai(settings, prompt)
+            source = "ai"
+        except:
+            pass
+
+    # 3단계: AI 실패 시 무료 사전 API (영영사전 fallback)
+    if not meaning:
+        try:
+            url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(word)}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json_lib.loads(resp.read().decode())
+                defs = []
+                for m in data[0].get("meanings", [])[:3]:
+                    pos = m.get("partOfSpeech", "")
+                    d = m.get("definitions", [{}])[0].get("definition", "")
+                    if d:
+                        defs.append(f"[{pos}] {d}")
+                if defs:
+                    meaning = "\n".join(defs)
+                    source = "dict"
+        except:
+            pass
+
+    if not meaning:
+        meaning = "(뜻을 불러올 수 없습니다)"
+        source = "none"
+
+    # DB에 캐싱 (다음번엔 즉시 반환)
+    if source in ("dict", "ai"):
+        try:
+            conn.execute("INSERT OR REPLACE INTO word_meanings (word, meaning, source) VALUES (?, ?, ?)",
+                         (word, meaning, source))
+            conn.commit()
+        except:
+            pass
+
+    conn.close()
+    return jsonify({"meaning": meaning, "source": source})
+
+
+@app.route("/api/ai/word-meanings-batch", methods=["POST"])
+def api_word_meanings_batch():
+    """여러 단어의 뜻을 한번에 조회 (캐시 우선)"""
+    words = request.json.get("words", [])
+    if not words:
+        return jsonify({"results": {}})
+
+    conn = db.get_conn()
+    results = {}
+
+    # DB 캐시에서 한번에 조회
+    placeholders = ",".join("?" * len(words))
+    cached = conn.execute(
+        f"SELECT word, meaning FROM word_meanings WHERE word IN ({placeholders})",
+        [w.lower() for w in words]
+    ).fetchall()
+    for row in cached:
+        results[row["word"]] = row["meaning"]
+
+    # 캐시에 없는 단어만 사전 API로 조회
+    missing = [w for w in words if w.lower() not in results]
+    for word in missing[:20]:  # 최대 20개 제한
+        w = word.lower()
+        meaning = None
+        source = None
+        try:
+            url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w)}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json_lib.loads(resp.read().decode())
+                defs = []
+                for m in data[0].get("meanings", [])[:2]:
+                    pos = m.get("partOfSpeech", "")
+                    d = m.get("definitions", [{}])[0].get("definition", "")
+                    if d:
+                        defs.append(f"[{pos}] {d}")
+                if defs:
+                    meaning = "\n".join(defs)
+                    source = "dict"
+        except:
+            pass
+
+        if meaning:
+            results[w] = meaning
+            try:
+                conn.execute("INSERT OR REPLACE INTO word_meanings (word, meaning, source) VALUES (?, ?, ?)",
+                             (w, meaning, source))
+            except:
+                pass
+        else:
+            results[w] = w
+
+    conn.commit()
+    conn.close()
+    return jsonify({"results": results})
 
 
 def call_ai(settings, prompt, retries=3):

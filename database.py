@@ -122,6 +122,16 @@ def init_db():
         )
     """)
 
+    # 단어 뜻 캐싱 테이블
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS word_meanings (
+            word TEXT PRIMARY KEY NOT NULL,
+            meaning TEXT NOT NULL,
+            source TEXT DEFAULT 'dict',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     # 기존 reviews 데이터를 study_log로 마이그레이션 (최초 1회)
     migrated = conn.execute("SELECT COUNT(*) as c FROM study_log").fetchone()["c"]
     if migrated == 0:
