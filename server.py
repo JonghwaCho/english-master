@@ -226,6 +226,11 @@ def api_add_video():
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
+    # URL 정리: list, start_radio 등 불필요한 파라미터 제거
+    video_id_from_url = yt.extract_video_id(url)
+    if video_id_from_url:
+        url = f"https://www.youtube.com/watch?v={video_id_from_url}"
+
     try:
         video_id, title, sentences = yt.process_video(url)
         db_video_id = db.add_video(url, video_id, title)
@@ -242,7 +247,159 @@ def api_add_video():
             "paragraphs": sentences[-1][0] + 1 if sentences else 0,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        error_msg = str(e)
+        # 자막이 없는 경우 특별 응답
+        if "Could not get transcript" in error_msg or "Could not retrieve a transcript" in error_msg:
+            video_id = yt.extract_video_id(url)
+            title = f"YouTube - {video_id}" if video_id else "Unknown"
+            # YouTube 제목 가져오기 시도
+            try:
+                title = yt.get_video_title(video_id) or title
+            except Exception:
+                pass
+            clean_title = _clean_youtube_title(title)
+            return jsonify({
+                "no_transcript": True,
+                "video_id": video_id,
+                "title": title,
+                "clean_title": clean_title,
+                "url": url,
+                "message": "이 콘텐츠는 자막(가사)이 없습니다."
+            })
+        return jsonify({"error": error_msg}), 400
+
+
+@app.route("/api/videos/add-with-lyrics", methods=["POST"])
+def api_add_video_with_lyrics():
+    """자막 없는 YouTube 영상에 가사/자막을 수동으로 추가"""
+    data = request.json
+    url = data.get("url", "").strip()
+    lyrics = data.get("lyrics", "").strip()
+    title = data.get("title", "").strip()
+
+    if not url or not lyrics:
+        return jsonify({"error": "URL과 가사가 필요합니다"}), 400
+
+    video_id = yt.extract_video_id(url)
+    if not video_id:
+        return jsonify({"error": "유효하지 않은 YouTube URL입니다"}), 400
+
+    # 텍스트 콘텐츠로 저장하되 YouTube URL 연결
+    db_video_id, error = _save_text_content(
+        title, lyrics, category_id=None,
+        content_type='youtube_lyrics', url=url
+    )
+    if error:
+        return jsonify({"error": error}), 400
+
+    # YouTube video_id 업데이트
+    conn = db.get_conn()
+    conn.execute("UPDATE videos SET video_id=? WHERE id=?", (video_id, db_video_id))
+    conn.commit()
+    conn.close()
+
+    count = len(db.get_all_sentences(db_video_id))
+    return jsonify({
+        "message": f"'{title}' 가사 추가 완료!",
+        "video_id": db_video_id,
+        "sentences": count
+    })
+
+
+@app.route("/api/lyrics/search", methods=["POST"])
+def api_search_lyrics():
+    """인터넷에서 가사를 자동으로 검색"""
+    data = request.json
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"error": "제목이 필요합니다"}), 400
+
+    # YouTube 제목에서 가수명과 곡명 추출 시도
+    clean_title = _clean_youtube_title(title)
+
+    lyrics = _search_lyrics_online(clean_title)
+    if lyrics:
+        return jsonify({"lyrics": lyrics, "title": clean_title})
+    else:
+        return jsonify({"lyrics": None, "clean_title": clean_title, "message": "가사를 찾을 수 없습니다. 제목을 수정하여 다시 검색하거나 직접 입력해주세요."})
+
+
+def _clean_youtube_title(title):
+    """YouTube 제목에서 가수명 - 곡명 형태로 정리"""
+    clean = title
+    # 괄호/대괄호 안 내용 제거: (가사), (Official Video), [MV], [Lyrics] 등
+    clean = re.sub(r'\(.*?\)|\[.*?\]|\{.*?\}', '', clean)
+    # 일반적인 YouTube 불필요 단어 제거
+    noise_words = [
+        'Official', 'Video', 'MV', 'M/V', 'Lyrics', 'Lyric',
+        'HD', '4K', '1080p', '720p', 'Audio', 'HQ',
+        'Full', 'Album', 'Version', 'Live', 'Concert',
+        'Remastered', 'Remaster', 'with lyrics',
+        '가사', '자막', '한글', '번역', '해석',
+    ]
+    for w in noise_words:
+        clean = re.sub(r'\b' + re.escape(w) + r'\b', '', clean, flags=re.IGNORECASE)
+    # 언더스코어, 콜론 등을 하이픈으로 변환 (가수_곡명, 가수: 곡명 → 가수 - 곡명)
+    clean = re.sub(r'\s*[_:：]\s*', ' - ', clean)
+    # 여러 하이픈/대시 통일
+    clean = re.sub(r'\s*[-–—]+\s*', ' - ', clean)
+    # 연속 공백 정리
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    # 양 끝 하이픈 제거
+    clean = clean.strip('- ').strip()
+    return clean
+
+
+def _search_lyrics_online(query):
+    """인터넷에서 가사 검색 (lyrics.ovh API 사용, 여러 파싱 전략 시도)"""
+    # 가수 - 곡명 분리 전략들
+    strategies = []
+
+    # 전략 1: 하이픈으로 분리 (가장 일반적: "Artist - Song")
+    parts = re.split(r'\s*[-–—]\s*', query, maxsplit=1)
+    if len(parts) == 2:
+        strategies.append((parts[0].strip(), parts[1].strip()))
+        # 전략 2: 순서 뒤집기 ("Song - Artist" 형태일 수도 있음)
+        strategies.append((parts[1].strip(), parts[0].strip()))
+
+    # 전략 3: "by" 로 분리 ("Song by Artist")
+    by_parts = re.split(r'\s+by\s+', query, maxsplit=1, flags=re.IGNORECASE)
+    if len(by_parts) == 2:
+        strategies.append((by_parts[1].strip(), by_parts[0].strip()))
+
+    # 전략 4: 하이픈 없으면 전체를 곡명으로, 앞부분을 아티스트로 추정
+    if len(parts) < 2:
+        words = query.split()
+        if len(words) >= 3:
+            # 앞 2단어를 아티스트, 나머지를 곡명으로
+            strategies.append((' '.join(words[:2]), ' '.join(words[2:])))
+        if len(words) >= 2:
+            strategies.append((words[0], ' '.join(words[1:])))
+
+    for artist, song in strategies:
+        if not artist or not song:
+            continue
+        result = _try_lyrics_api(artist, song)
+        if result:
+            return result
+
+    return None
+
+
+def _try_lyrics_api(artist, song):
+    """lyrics.ovh API로 가사 검색 시도"""
+    try:
+        encoded_artist = urllib.parse.quote(artist)
+        encoded_song = urllib.parse.quote(song)
+        api_url = f"https://api.lyrics.ovh/v1/{encoded_artist}/{encoded_song}"
+        req = urllib.request.Request(api_url, headers={"User-Agent": "EnglishMaster/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json_lib.loads(resp.read().decode('utf-8'))
+            if data.get("lyrics"):
+                return data["lyrics"].strip()
+    except Exception as e:
+        logging.debug(f"Lyrics API failed for '{artist}' - '{song}': {e}")
+    return None
 
 
 @app.route("/api/videos/<int:video_id>", methods=["DELETE"])
@@ -331,6 +488,12 @@ def api_add_unknown_word():
 def api_mark_word():
     data = request.json
     db.mark_word(data["word_id"], data["status"])
+    return jsonify({"ok": True})
+
+
+@app.route("/api/words/<int:word_id>", methods=["DELETE"])
+def api_delete_word(word_id):
+    db.delete_word(word_id)
     return jsonify({"ok": True})
 
 

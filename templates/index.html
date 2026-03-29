@@ -140,8 +140,8 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 /* Full play mode */
 .fullplay-sentence { padding: 10px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; border-left: 3px solid transparent; transition: all 0.2s; display: flex; align-items: flex-start; gap: 8px; font-size: var(--app-font-size, 14px); }
 .fullplay-sentence:hover { background: var(--bg3); }
-.fullplay-sentence.active { background: rgba(99, 102, 241, 0.15); border-left-color: var(--primary); }
-.fullplay-sentence.active .fullplay-text { color: #38bdf8; }
+.fullplay-sentence.active { background: rgba(99, 102, 241, 0.25); border-left-color: var(--primary); border-left-width: 4px; box-shadow: 0 0 12px rgba(99, 102, 241, 0.2); }
+.fullplay-sentence.active .fullplay-text { color: #60a5fa; font-weight: 600; }
 .fullplay-sentence.marked-unknown { background: rgba(239, 68, 68, 0.08); border-left-color: var(--red); }
 .fullplay-sentence.marked-unknown .sentence-status-dot { background: var(--red); }
 .fullplay-translation { font-size: 13px; color: var(--text3); margin-top: 4px; font-style: italic; padding-left: 52px; }
@@ -301,7 +301,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     </div>
     <div id="category-nav-list"></div>
   </div>
-  <div class="sidebar-toggles">
+  <div class="sidebar-toggles" id="sidebar-video-controls">
     <button class="toggle-btn" onclick="toggleVideo()" id="video-toggle-btn">영상 OFF</button>
     <button class="toggle-btn" onclick="toggleTranslation()" id="trans-toggle-btn">해석 OFF</button>
     <button class="toggle-btn on" onclick="toggleTTS()" id="tts-toggle-btn">음성 ON</button>
@@ -414,6 +414,10 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     </div>
     <!-- Sentence-by-sentence study area -->
     <div id="study-area" style="display:none;">
+      <div id="study-area-breadcrumb" style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:14px;">
+        <button onclick="endStudyAndBack()" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text2); padding:4px 8px;" title="뒤로가기">←</button>
+        <span style="color:var(--text3);">학습하기 - 문장별학습</span>
+      </div>
       <div class="study-progress"><div class="study-progress-bar" id="study-progress-bar"></div></div>
       <div class="study-card">
         <div class="study-meta" id="study-meta"></div>
@@ -442,12 +446,30 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     </div>
     <!-- Full video play area -->
     <div id="study-fullplay" style="display:none;">
+      <div id="study-fullplay-breadcrumb" style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:14px;">
+        <button onclick="endFullPlayAndBack()" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text2); padding:4px 8px;" title="뒤로가기">←</button>
+        <span style="color:var(--text3);">학습하기 - 전체학습</span>
+      </div>
       <div style="text-align:center; margin-bottom:16px;">
-        <h2 style="font-size:18px; margin-bottom:12px;">전체학습하기</h2>
+        <!-- 임베딩 차단 영상 안내 -->
+        <div id="fullplay-embed-blocked" style="display:none; margin-bottom:16px; background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:16px; max-width:500px; margin-left:auto; margin-right:auto;">
+          <div style="font-size:14px; color:var(--yellow, #f59e0b); margin-bottom:8px;">⚠️ 이 영상은 임베딩이 차단된 영상입니다</div>
+          <div style="font-size:13px; color:var(--text3); margin-bottom:12px;">따라서 별도의 창으로 YouTube를 제공합니다.<br>YouTube에서 음악을 재생하면서 아래 가사를 따라가며 학습하세요.</div>
+          <div style="display:flex; gap:12px; justify-content:center;">
+            <button class="btn btn-primary" onclick="openYouTubePopup()" style="font-size:15px; padding:10px 32px;">🎵 YouTube에서 열기</button>
+            <button class="btn btn-green" onclick="startTTSPlayForBlocked()" style="font-size:15px; padding:10px 32px;">🔊 TTS로 가사 읽기</button>
+          </div>
+        </div>
+        <!-- 재생 시작 버튼 (자동재생 실패 시 표시) -->
+        <div id="fullplay-start-overlay" style="display:none; margin-bottom:16px;">
+          <button class="btn btn-primary" onclick="manualStartFullPlay()" style="font-size:18px; padding:16px 48px;">▶ 재생 시작</button>
+          <div style="font-size:12px; color:var(--text3); margin-top:8px;">자동 재생이 시작되지 않으면 이 버튼을 눌러주세요</div>
+        </div>
         <div id="fullplay-btn-bar" style="display:flex; gap:0; align-items:center; justify-content:center; width:600px; margin:0 auto;">
           <button class="btn btn-primary btn-sm" onclick="toggleFullPlayPause()" id="fullplay-pause-btn" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:6px 0 0 6px;">일시정지</button>
           <button class="toggle-btn" onclick="toggleFullplayTranslation()" id="fullplay-trans-btn" style="flex:1;padding:8px 0;border-radius:0;">해석 OFF</button>
           <button class="toggle-btn" onclick="toggleWordFlash()" id="wordflash-toggle-btn" style="flex:1;padding:8px 0;border-radius:0;">단어 OFF</button>
+          <button class="toggle-btn" onclick="toggleEmojiFilter()" id="emoji-filter-btn" style="flex:1;padding:8px 0;border-radius:0;">🎵 OFF</button>
           <button class="btn btn-red btn-sm" onclick="endFullPlay()" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">종료</button>
         </div>
         <div style="font-size:12px; color:var(--text3); margin-top:8px;">R=모르는문장 | Y=아는문장 | Space=일시정지</div>
@@ -491,9 +513,15 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     </div>
     <!-- 전체 복습 (문장/단어 공통) -->
     <div id="review-all-list-area" style="display:none;">
+      <div id="review-all-breadcrumb" style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:14px;">
+        <button onclick="backToReviewModeSelect()" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text2); padding:4px 8px;" title="뒤로가기">←</button>
+        <span style="color:var(--text3);" id="review-all-breadcrumb-text">단어복습 - 전체학습</span>
+      </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
         <span style="font-size:14px; color:var(--text3);" id="review-all-count-info"></span>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="toggle-btn active" id="review-all-popup-btn" onclick="toggleReviewAllPopup()">📖 팝업 ON</button>
+          <button class="toggle-btn active" id="review-all-voice-btn" onclick="toggleReviewAllVoice()">🔊 발음 ON</button>
           <button class="btn btn-green" onclick="submitReviewAll()">💾 결과 저장</button>
           <button class="btn btn-outline btn-sm" onclick="endReviewAll()">학습 종료</button>
         </div>
@@ -510,6 +538,10 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
       <p>에빙하우스 기억곡선에 따라 복습 시간이 되면 알려드릴게요.</p>
     </div>
     <div id="review-area" style="display:none;">
+      <div id="review-individual-breadcrumb" style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:14px;">
+        <button onclick="backToReviewModeSelect()" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text2); padding:4px 8px;" title="뒤로가기">←</button>
+        <span style="color:var(--text3);" id="review-individual-breadcrumb-text">단어복습 - 개별학습</span>
+      </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <div></div>
         <div style="display:flex; gap:8px; align-items:center;">
@@ -775,6 +807,32 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
   </div>
 </div>
 
+<!-- 삭제 확인 팝업 -->
+<div id="delete-confirm-popup" style="display:none; position:fixed; z-index:10001; background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.3); min-width:240px;">
+  <div style="font-size:14px; font-weight:600; margin-bottom:8px;">삭제하시겠습니까?</div>
+  <div style="font-size:13px; color:var(--text3); margin-bottom:16px;"><span id="delete-confirm-word"></span>을(를) 모르는 단어 목록과 복습 목록에서 영구 삭제합니다.</div>
+  <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text3); margin-bottom:12px; cursor:pointer;">
+    <input type="checkbox" id="delete-no-ask-again" style="cursor:pointer;"> 이후에 다시 묻지 않기
+  </label>
+  <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <button class="btn btn-outline btn-sm" onclick="cancelDeleteReviewItem()">취소</button>
+    <button class="btn btn-red btn-sm" onclick="confirmDeleteReviewItem()">삭제</button>
+  </div>
+</div>
+
+<!-- 전체복습 잊음 팝업 -->
+<div class="modal-overlay" id="modal-review-all-forgot">
+  <div class="modal" style="max-width:500px; padding:32px;">
+    <div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--red);">❌ 잊어버린 단어</div>
+    <div id="review-all-popup-word" style="font-size:28px; font-weight:700; line-height:1.6; margin-bottom:8px; text-align:center;"></div>
+    <div id="review-all-popup-meaning" style="font-size:16px; color:var(--text3); margin-bottom:20px; text-align:center; min-height:20px; white-space:pre-wrap;"></div>
+    <div style="display:flex; gap:8px; justify-content:center;">
+      <button class="btn btn-outline btn-sm" onclick="replayReviewAllForgot()">🔊 다시 듣기</button>
+      <button class="btn btn-primary btn-sm" onclick="closeReviewAllForgotPopup()">확인</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast container -->
 <div id="toast-container"></div>
 
@@ -820,6 +878,7 @@ let fullPlaySentences = [];
 let fullPlayTimer = null;
 let fullPlayCurrentIdx = -1;
 let fullplayTransEnabled = localStorage.getItem('fullplayTransEnabled') === 'true';
+let emojiFilterEnabled = localStorage.getItem('emojiFilterEnabled') !== 'false'; // default ON (이모티콘 제거)
 let replaySpeed = parseFloat(localStorage.getItem('replaySpeed')) || 1;
 let reviewListenFirst = localStorage.getItem('reviewListenFirst') === 'true';
 let appFontSize = parseInt(localStorage.getItem('appFontSize')) || 14;
@@ -867,7 +926,14 @@ function initPlayer(ytVideoId) {
     ytPlayer = new YT.Player('yt-player', {
       height: '338', width: '600', videoId: ytVideoId,
       playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1 },
-      events: { onReady: function() { ytReady = true; } }
+      events: {
+        onReady: function() { ytReady = true; },
+        onError: function(event) {
+          // 2=잘못된ID, 5=HTML5에러, 100=삭제됨, 101/150=임베딩차단
+          console.log('YouTube Player Error code:', event.data);
+          onYouTubeEmbedBlocked(ytVideoId);
+        }
+      }
     });
   } catch(e) {
     console.error('YT Player init error:', e);
@@ -1107,12 +1173,14 @@ function showPage(page, skipHistory) {
   document.querySelectorAll('.nav-item').forEach(function(n, i) {
     n.classList.toggle('active', pages[i] === page);
   });
-  // Clean up full play if leaving study
-  if (page !== 'study' && fullPlayActive) endFullPlay();
-  // Hide video player on stats/settings pages
+  // Clean up media and full play if leaving study
+  if (page !== 'study') {
+    stopAllMedia();
+  }
+  // Hide video player on non-study pages
   var ytContainer = document.getElementById('yt-container');
   if (ytContainer) {
-    if (page === 'stats' || page === 'settings') {
+    if (page !== 'study' || page === 'stats' || page === 'settings' || page === 'review-words' || page === 'review-sentences') {
       ytContainer.style.display = 'none';
     }
   }
@@ -1248,7 +1316,7 @@ async function loadVideos() {
   }
   var catOptions = categories.map(function(c) { return '<option value="' + c.id + '">' + c.name + '</option>'; }).join('');
   el.innerHTML = videos.map(function(v) {
-    var icon = v.content_type === 'text' ? '\uD83D\uDCC4' : '\uD83C\uDFAC';
+    var icon = v.content_type === 'youtube_lyrics' ? '🎵' : (v.content_type === 'text' ? '📄' : '🎬');
     return `
     <div class="video-item">
       <div class="video-info" onclick="openVideoStudy(${v.id})">
@@ -1290,6 +1358,9 @@ async function addVideo() {
     const result = await api('/api/videos', { method: 'POST', body: { url } });
     if (result.error) {
       toast(result.error, 'error');
+    } else if (result.no_transcript) {
+      // 자막이 없는 경우 팝업 표시
+      showNoTranscriptDialog(result.url, result.title, result.video_id, result.clean_title);
     } else {
       toast(result.message);
       input.value = '';
@@ -1301,6 +1372,174 @@ async function addVideo() {
   } finally {
     btn.disabled = false;
     btn.textContent = '추가';
+  }
+}
+
+function showNoTranscriptDialog(url, title, videoId, cleanTitle) {
+  cleanTitle = cleanTitle || title;
+  // 기존 팝업이 있으면 제거
+  var existing = document.getElementById('no-transcript-dialog');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'no-transcript-dialog';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:var(--bg1);border-radius:16px;padding:32px;max-width:550px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 12px;font-size:18px;">🎵 자막(가사)이 없습니다</h3>
+      <p style="color:var(--text2);font-size:14px;margin-bottom:8px;"><strong>${title}</strong></p>
+      <p style="color:var(--text3);font-size:13px;margin-bottom:20px;">이 영상에는 자막이 없습니다. 가사를 자동으로 검색할까요?</p>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px;">검색용 제목 (가수 - 곡명 형태로 수정하면 검색 정확도가 올라갑니다)</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="lyrics-search-title" value="${cleanTitle}" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text1);font-size:14px;">
+          <button class="btn btn-primary btn-sm" onclick="retrySearchLyrics('${url}', '${videoId}')">🔍 검색</button>
+        </div>
+      </div>
+      <div id="no-transcript-actions" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="autoSearchLyrics('${url}', document.getElementById('lyrics-search-title').value, '${videoId}')">🔍 자동으로 가사 검색</button>
+        <button class="btn btn-outline" onclick="showManualLyricsInput('${url}', '${title.replace(/'/g, "\\'")}', '${videoId}')">✏️ 직접 입력</button>
+        <button class="btn btn-outline" onclick="closeNoTranscriptDialog()" style="color:var(--text3);">취소</button>
+      </div>
+      <div id="lyrics-search-result" style="display:none;margin-top:16px;"></div>
+      <div id="manual-lyrics-area" style="display:none;margin-top:16px;">
+        <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px;">제목</label>
+        <input type="text" id="lyrics-title-input" value="${title}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text1);font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+        <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px;">가사 입력</label>
+        <textarea id="lyrics-text-input" rows="12" placeholder="가사를 여기에 붙여넣으세요..." style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text1);font-size:14px;resize:vertical;box-sizing:border-box;"></textarea>
+        <div style="display:flex;gap:12px;margin-top:12px;justify-content:center;">
+          <button class="btn btn-primary" onclick="submitLyrics('${url}')">💾 저장</button>
+          <button class="btn btn-outline" onclick="closeNoTranscriptDialog()">취소</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function closeNoTranscriptDialog() {
+  var dialog = document.getElementById('no-transcript-dialog');
+  if (dialog) dialog.remove();
+}
+
+function retrySearchLyrics(url, videoId) {
+  var title = document.getElementById('lyrics-search-title').value.trim();
+  if (!title) { toast('제목을 입력해주세요', 'error'); return; }
+  autoSearchLyrics(url, title, videoId);
+}
+
+async function autoSearchLyrics(url, title, videoId) {
+  var actionsDiv = document.getElementById('no-transcript-actions');
+  var resultDiv = document.getElementById('lyrics-search-result');
+  actionsDiv.innerHTML = '<span class="loading"></span> 가사를 검색하는 중...';
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '';
+
+  // 현재 URL과 videoId를 저장
+  window._lyricsUrl = url;
+  window._lyricsVideoId = videoId;
+
+  try {
+    var result = await api('/api/lyrics/search', { method: 'POST', body: { title: title } });
+    if (result.lyrics) {
+      // 가사를 찾음 → 미리보기 표시
+      actionsDiv.innerHTML = '<span style="color:var(--green);font-weight:600;">✅ 가사를 찾았습니다!</span>';
+      var safeTitle = (result.title || title).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      resultDiv.innerHTML = `
+        <div style="background:var(--bg2);border-radius:8px;padding:12px;max-height:200px;overflow-y:auto;font-size:13px;white-space:pre-wrap;margin-bottom:12px;">${result.lyrics.replace(/</g,'&lt;').substring(0, 1000)}${result.lyrics.length > 1000 ? '...' : ''}</div>
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button class="btn btn-primary" onclick="saveLyricsFromSearch()">💾 이 가사로 저장</button>
+          <button class="btn btn-outline" onclick="editSearchedLyrics()">✏️ 직접 수정</button>
+        </div>
+      `;
+      // 검색된 가사를 임시 저장
+      window._searchedLyrics = result.lyrics;
+      window._searchedTitle = result.title || title;
+    } else {
+      // 가사를 못 찾음
+      var cleanTitle = result.clean_title || title;
+      actionsDiv.innerHTML = '<span style="color:var(--red);">❌ 가사를 찾을 수 없습니다</span>';
+      resultDiv.innerHTML = `
+        <p style="font-size:13px;color:var(--text3);margin-bottom:12px;">제목을 "가수 - 곡명" 형태로 수정한 후 다시 검색하거나, 직접 입력해주세요.</p>
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button class="btn btn-outline" onclick="editSearchedLyrics()">✏️ 직접 입력</button>
+        </div>
+      `;
+    }
+  } catch (e) {
+    actionsDiv.innerHTML = '<span style="color:var(--red);">검색 중 오류 발생</span>';
+    resultDiv.innerHTML = `<button class="btn btn-outline" onclick="editSearchedLyrics()">✏️ 직접 입력</button>`;
+  }
+}
+
+function editSearchedLyrics() {
+  var url = window._lyricsUrl;
+  var title = document.getElementById('lyrics-search-title').value.trim();
+  var videoId = window._lyricsVideoId;
+  showManualLyricsInput(url, title, videoId);
+}
+
+async function saveLyricsFromSearch() {
+  var url = window._lyricsUrl;
+  var lyrics = window._searchedLyrics;
+  var finalTitle = window._searchedTitle || document.getElementById('lyrics-search-title').value.trim();
+  if (!lyrics) { toast('가사가 없습니다', 'error'); return; }
+
+  try {
+    var result = await api('/api/videos/add-with-lyrics', {
+      method: 'POST',
+      body: { url: url, lyrics: lyrics, title: finalTitle }
+    });
+    if (result.error) {
+      toast(result.error, 'error');
+    } else {
+      toast(result.message);
+      closeNoTranscriptDialog();
+      document.getElementById('youtube-url').value = '';
+      loadVideos();
+      loadDashboard();
+    }
+  } catch (e) {
+    toast('저장 중 오류가 발생했습니다', 'error');
+  }
+}
+
+function showManualLyricsInput(url, title, videoId) {
+  var actionsDiv = document.getElementById('no-transcript-actions');
+  var resultDiv = document.getElementById('lyrics-search-result');
+  var manualDiv = document.getElementById('manual-lyrics-area');
+  actionsDiv.style.display = 'none';
+  resultDiv.style.display = 'none';
+  manualDiv.style.display = 'block';
+
+  // 검색된 가사가 있으면 textarea에 미리 채우기
+  if (window._searchedLyrics) {
+    document.getElementById('lyrics-text-input').value = window._searchedLyrics;
+  }
+  document.getElementById('lyrics-title-input').value = title;
+}
+
+async function submitLyrics(url) {
+  var title = document.getElementById('lyrics-title-input').value.trim();
+  var lyrics = document.getElementById('lyrics-text-input').value.trim();
+  if (!lyrics) { toast('가사를 입력해주세요', 'error'); return; }
+
+  try {
+    var result = await api('/api/videos/add-with-lyrics', {
+      method: 'POST',
+      body: { url: url, lyrics: lyrics, title: title }
+    });
+    if (result.error) {
+      toast(result.error, 'error');
+    } else {
+      toast(result.message);
+      closeNoTranscriptDialog();
+      document.getElementById('youtube-url').value = '';
+      loadVideos();
+      loadDashboard();
+    }
+  } catch (e) {
+    toast('저장 중 오류가 발생했습니다', 'error');
   }
 }
 
@@ -1346,10 +1585,16 @@ async function loadStudySelect() {
     return;
   }
 
+  // 콘텐츠가 1개뿐이면 바로 상세 페이지로 이동
+  if (videos.length === 1) {
+    openVideoStudy(videos[0].id);
+    return;
+  }
+
   el.innerHTML = videos.map(function(v) {
     var total = v.total_sentences || 0;
     var knownPct = total ? Math.round(((v.known_count||0) + (v.mastered_count||0)) / total * 100) : 0;
-    var icon = v.content_type === 'text' ? '\uD83D\uDCC4' : '\uD83C\uDFAC';
+    var icon = v.content_type === 'youtube_lyrics' ? '🎵' : (v.content_type === 'text' ? '📄' : '🎬');
     return `
     <div class="video-item" onclick="openVideoStudy(${v.id})">
       <div class="video-info">
@@ -1380,7 +1625,7 @@ async function openVideoStudy(videoId) {
   var videoInfo = results[0];
   var sentences = results[1];
   studyCurrentVideoInfo = videoInfo;
-  var isText = videoInfo.content_type === 'text';
+  var isText = videoInfo.content_type === 'text' || videoInfo.content_type === 'youtube_lyrics';
 
   var total = sentences.length;
   var known = sentences.filter(function(s) { return s.status === 'known' || s.status === 'mastered'; }).length;
@@ -1389,7 +1634,8 @@ async function openVideoStudy(videoId) {
 
   document.getElementById('study-video-header').innerHTML = `
     <div class="card">
-      <h2 style="font-size:18px; margin-bottom:12px;">${isText ? '\uD83D\uDCC4' : '\uD83C\uDFAC'} ${videoInfo.title || 'Untitled'}</h2>
+      <h2 style="font-size:18px; margin-bottom:12px;">${videoInfo.content_type === 'youtube_lyrics' ? '🎵' : (isText ? '📄' : '🎬')} ${videoInfo.title || 'Untitled'}</h2>
+      ${videoInfo.content_type === 'youtube_lyrics' ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:13px;"><span style="color:#f59e0b;">⚠️</span> <span style="color:var(--text3);">이 영상은 임베딩이 차단되어 별도의 창으로 YouTube를 제공합니다.</span> <button class="btn btn-outline btn-sm" onclick="window.open(\'https://www.youtube.com/watch?v='+videoInfo.video_id+'\',\'youtube_popup\',\'width=640,height=400\')" style="margin-left:8px;">🎵 YouTube에서 열기</button></div>' : ''}
       <div style="display:flex; gap:16px; margin-bottom:16px; font-size:14px; color:var(--text2);">
         <span>전체: ${total}</span>
         <span style="color:var(--green);">아는 문장: ${known}</span>
@@ -1397,7 +1643,7 @@ async function openVideoStudy(videoId) {
         <span>미학습: ${newCount}</span>
       </div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-        <button class="btn btn-primary" onclick="startFullVideoPlay(${videoId})">전체학습하기</button>
+        <button class="btn btn-primary" onclick="startFullVideoPlay(${videoId})" style="font-size:16px; padding:12px 28px;">▶ 전체학습 시작</button>
         ${newCount > 0 ? `<button class="btn btn-green" onclick="startStudyVideo(${videoId})">문장별학습하기 (${newCount})</button>` : ''}
         ${unknown > 0 ? `<button class="btn btn-outline" onclick="startStudyUnknown(${videoId})">모르는 문장 복습 (${unknown})</button>` : ''}
         <button class="btn btn-outline" onclick="deleteContent(${videoId})" style="margin-left:auto; color:var(--red); border-color:var(--red);">🗑️ 콘텐츠 삭제</button>
@@ -1621,7 +1867,7 @@ async function startFullVideoPlay(videoId) {
   ]);
   var videoInfo = results[0];
   var sentences = results[1];
-  var isText = videoInfo.content_type === 'text';
+  var isText = videoInfo.content_type === 'text' || videoInfo.content_type === 'youtube_lyrics';
 
   if (!sentences.length) { toast('문장이 없습니다', 'error'); return; }
 
@@ -1629,6 +1875,7 @@ async function startFullVideoPlay(videoId) {
   fullPlayActive = true;
   fullPlayCurrentIdx = -1;
   textFullPlayMode = isText;
+  window._embedBlocked = false;
 
   document.getElementById('study-select').style.display = 'none';
   document.getElementById('study-video-detail').style.display = 'none';
@@ -1641,6 +1888,16 @@ async function startFullVideoPlay(videoId) {
 
   // Initialize word flash UI
   updateWordFlashUI();
+
+  // Initialize emoji filter button
+  var emojiBtn = document.getElementById('emoji-filter-btn');
+  if (emojiFilterEnabled) {
+    emojiBtn.textContent = '🎵 OFF';
+    emojiBtn.classList.remove('active');
+  } else {
+    emojiBtn.textContent = '🎵 ON';
+    emojiBtn.classList.add('active');
+  }
 
   var html = '';
   var currentPara = -1;
@@ -1666,40 +1923,128 @@ async function startFullVideoPlay(videoId) {
 
   if (fullplayTransEnabled) loadFullplayTranslations();
 
+  // 임베딩 차단 안내 표시/숨김
+  var embedBlocked = document.getElementById('fullplay-embed-blocked');
+  if (videoInfo.content_type === 'youtube_lyrics' && videoInfo.video_id) {
+    embedBlocked.style.display = 'block';
+    window._youtubePopupVideoId = videoInfo.video_id;
+  } else {
+    embedBlocked.style.display = 'none';
+    window._youtubePopupVideoId = null;
+  }
+
+  // 시작 버튼 바로 표시 (자동 재생 시도와 동시에)
+  document.getElementById('fullplay-start-overlay').style.display = 'block';
+  fullPlayAutoStarted = false;
+
   if (isText) {
     // Text content: use TTS sequential play
     startTextSequentialPlay();
+    fullPlayAutoStarted = true;
   } else {
     // YouTube: enable video and start playing (with buffering)
     videoEnabled = true;
     localStorage.setItem('videoEnabled', 'true');
     updateVideoUI();
     initPlayer(videoInfo.video_id);
+    var retryCount = 0;
     var doPlay = function() {
+      // 임베딩 차단 또는 플레이어 제거 시 중단
+      if (window._embedBlocked || !ytPlayer) return;
       if (ytPlayer && ytPlayer.playVideo && ytReady) {
         var firstStart = (sentences[0] && sentences[0].start_time) ? sentences[0].start_time : 0;
-        // Seek first to trigger buffering
         ytPlayer.seekTo(firstStart, true);
         ytPlayer.pauseVideo();
-        // Wait for video to buffer before playing
+        var bufferRetry = 0;
         var waitBuffer = function() {
+          // 임베딩 차단 또는 플레이어 제거 시 중단
+          if (window._embedBlocked || !ytPlayer) return;
           var state = ytPlayer.getPlayerState && ytPlayer.getPlayerState();
           var buffered = ytPlayer.getVideoLoadedFraction && ytPlayer.getVideoLoadedFraction();
-          // State 5=cued, 2=paused, 3=buffering; wait until buffered enough
           if (buffered > 0.02 && state !== 3) {
             ytPlayer.seekTo(firstStart, true);
             ytPlayer.playVideo();
             startFullPlayTracking();
+            fullPlayAutoStarted = true;
+            document.getElementById('fullplay-start-overlay').style.display = 'none';
           } else {
-            setTimeout(waitBuffer, 200);
+            bufferRetry++;
+            if (bufferRetry > 25) {
+              document.getElementById('fullplay-start-overlay').style.display = 'block';
+            } else {
+              setTimeout(waitBuffer, 200);
+            }
           }
         };
         setTimeout(waitBuffer, 300);
       } else {
-        setTimeout(doPlay, 500);
+        retryCount++;
+        if (retryCount > 10) {
+          document.getElementById('fullplay-start-overlay').style.display = 'block';
+        } else {
+          setTimeout(doPlay, 500);
+        }
       }
     };
     setTimeout(doPlay, 500);
+  }
+}
+
+var fullPlayAutoStarted = false;
+
+function manualStartFullPlay() {
+  document.getElementById('fullplay-start-overlay').style.display = 'none';
+
+  // 임베딩 차단 감지된 경우 또는 텍스트 모드 → TTS 재생
+  if (textFullPlayMode || window._embedBlocked) {
+    textFullPlayMode = true;
+    startTextSequentialPlay();
+    return;
+  }
+
+  // YouTube: 재생 시도
+  if (ytPlayer && ytPlayer.playVideo && ytReady) {
+    var firstStart = (fullPlaySentences[0] && fullPlaySentences[0].start_time) ? fullPlaySentences[0].start_time : 0;
+    ytPlayer.seekTo(firstStart, true);
+    ytPlayer.playVideo();
+    startFullPlayTracking();
+  } else {
+    // 플레이어가 아직 없으면 다시 초기화
+    var videoId = fullPlaySentences[0] && fullPlaySentences[0].youtube_video_id;
+    if (videoId) {
+      videoEnabled = true;
+      updateVideoUI();
+      initPlayer(videoId);
+      var retries = 0;
+      var doPlay = function() {
+        // 임베딩 차단 감지 시 TTS로 전환
+        if (window._embedBlocked) {
+          textFullPlayMode = true;
+          startTextSequentialPlay();
+          return;
+        }
+        if (ytPlayer && ytPlayer.playVideo && ytReady) {
+          var firstStart = (fullPlaySentences[0] && fullPlaySentences[0].start_time) ? fullPlaySentences[0].start_time : 0;
+          ytPlayer.seekTo(firstStart, true);
+          ytPlayer.playVideo();
+          startFullPlayTracking();
+        } else {
+          retries++;
+          if (retries > 10) {
+            // 5초 후에도 안되면 TTS로 전환
+            textFullPlayMode = true;
+            startTextSequentialPlay();
+          } else {
+            setTimeout(doPlay, 500);
+          }
+        }
+      };
+      setTimeout(doPlay, 500);
+    } else {
+      // videoId 없으면 TTS로
+      textFullPlayMode = true;
+      startTextSequentialPlay();
+    }
   }
 }
 
@@ -1713,15 +2058,31 @@ function startTextSequentialPlay(startFrom) {
     fullPlayCurrentIdx = idx;
     highlightFullPlaySentence(idx);
     var s = fullPlaySentences[idx];
+    var ttsText = cleanTextForTTS(s.text);
+    // 정리 후 빈 텍스트면 건너뛰기
+    if (!ttsText) {
+      idx++;
+      if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) {
+        setTimeout(playNext, 100);
+      }
+      return;
+    }
     if (ttsEnabled && window.speechSynthesis) {
       window.speechSynthesis.cancel();
-      var utter = new SpeechSynthesisUtterance(s.text);
+      var utter = new SpeechSynthesisUtterance(ttsText);
       utter.lang = 'en-US';
       utter.rate = 0.9;
       if (selectedVoiceName) {
         var voice = window.speechSynthesis.getVoices().find(function(v) { return v.name === selectedVoiceName; });
         if (voice) utter.voice = voice;
       }
+      utter.onerror = function(e) {
+        console.error('TTS error:', e);
+        idx++;
+        if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) {
+          setTimeout(playNext, 300);
+        }
+      };
       utter.onend = function() {
         idx++;
         if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) {
@@ -1729,6 +2090,13 @@ function startTextSequentialPlay(startFrom) {
         }
       };
       window.speechSynthesis.speak(utter);
+      // Chrome 버그 workaround: speechSynthesis가 멈추는 것 방지
+      if (window._ttsResumeTimer) clearInterval(window._ttsResumeTimer);
+      window._ttsResumeTimer = setInterval(function() {
+        if (window.speechSynthesis && window.speechSynthesis.speaking) {
+          window.speechSynthesis.resume();
+        }
+      }, 5000);
     } else {
       idx++;
       if (idx < fullPlaySentences.length && !fullPlayPaused) setTimeout(playNext, 2000);
@@ -1746,7 +2114,7 @@ function startFullPlayTracking() {
   if (fullPlayRAF) cancelAnimationFrame(fullPlayRAF);
 
   function trackLoop() {
-    if (!fullPlayActive) return;
+    if (!fullPlayActive || textFullPlayMode) return;
     if (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1) {
       const rawTime = ytPlayer.getCurrentTime();
       const currentTime = rawTime + ytTimeOffset;
@@ -1797,23 +2165,25 @@ function highlightFullPlaySentence(idx) {
       }
     }
 
-    // Scroll the sentence list container so current sentence is visible
-    const sentContainer = document.getElementById('fullplay-sentences');
+    // Scroll: fullplay-sentences 컨테이너 내에서만 스크롤
+    var sentContainer = document.getElementById('fullplay-sentences');
     if (sentContainer) {
-      const containerTop = sentContainer.getBoundingClientRect().top;
-      const elTop = el.getBoundingClientRect().top;
-      const offset = elTop - containerTop - sentContainer.clientHeight / 2 + el.clientHeight / 2;
-      sentContainer.scrollBy({ top: offset, behavior: 'smooth' });
+      var containerRect = sentContainer.getBoundingClientRect();
+      var elRect = el.getBoundingClientRect();
+      var scrollOffset = elRect.top - containerRect.top + sentContainer.scrollTop - sentContainer.clientHeight / 3;
+      sentContainer.scrollTop = Math.max(0, scrollOffset);
     }
   }
 
-  // Apply karaoke to current sentence
+  // Apply karaoke to current sentence (YouTube 모드에서만)
   const s = fullPlaySentences[idx];
-  const textEl = document.getElementById(`fullplay-text-${idx}`);
-  if (textEl && s) {
-    const uid = `fp-${idx}`;
-    textEl.innerHTML = renderKaraokeText(s.text, uid);
-    startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+  if (!textFullPlayMode) {
+    const textEl = document.getElementById(`fullplay-text-${idx}`);
+    if (textEl && s) {
+      const uid = `fp-${idx}`;
+      textEl.innerHTML = renderKaraokeText(s.text, uid);
+      startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
+    }
   }
 
   // Word flash
@@ -2198,6 +2568,30 @@ document.addEventListener('keydown', async (e) => {
   }
 });
 
+function toggleEmojiFilter() {
+  emojiFilterEnabled = !emojiFilterEnabled;
+  localStorage.setItem('emojiFilterEnabled', emojiFilterEnabled);
+  var btn = document.getElementById('emoji-filter-btn');
+  if (emojiFilterEnabled) {
+    btn.textContent = '🎵 OFF';
+    btn.classList.remove('active');
+  } else {
+    btn.textContent = '🎵 ON';
+    btn.classList.add('active');
+  }
+}
+
+function cleanTextForTTS(text) {
+  if (!emojiFilterEnabled) return text;
+  // 이모티콘, 음표 기호 등 제거
+  var cleaned = text.replace(/[\u2600-\u27BF\u{1F300}-\u{1F9FF}\u{2702}-\u{27B0}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}♪♫♬♩♭♮♯🎵🎶🎤🎧🎼]/gu, '');
+  // 괄호 안 설명 제거 (예: (gentle guitar music), [Music])
+  cleaned = cleaned.replace(/\(.*?\)|\[.*?\]/g, '');
+  // 연속 공백 정리
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
+}
+
 function toggleFullplayTranslation() {
   fullplayTransEnabled = !fullplayTransEnabled;
   localStorage.setItem('fullplayTransEnabled', fullplayTransEnabled);
@@ -2245,7 +2639,8 @@ function toggleFullPlayPause() {
     btn.classList.remove('btn-green');
     btn.classList.add('btn-primary');
     if (textFullPlayMode) {
-      startTextSequentialPlay(fullPlayCurrentIdx);
+      // TTS 모드 재개 (임베딩 차단/일반 텍스트 모두)
+      resumeTTSPlayForBlocked(fullPlayCurrentIdx);
     } else {
       if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
       startFullPlayTracking();
@@ -2439,9 +2834,431 @@ function endFullPlay() {
   }
 }
 
+function onYouTubeEmbedBlocked(videoId) {
+  // 이미 처리된 경우 중복 실행 방지
+  if (window._embedBlocked) return;
+
+  // 임베딩 차단 플래그 설정
+  window._embedBlocked = true;
+
+  // YouTube 플레이어 숨기고 안내 표시
+  var ytContainer = document.getElementById('yt-container');
+  if (ytContainer) ytContainer.style.display = 'none';
+
+  // "재생 시작" 버튼 숨기기 (임베딩 차단 안내에 TTS 버튼이 있음)
+  var overlay = document.getElementById('fullplay-start-overlay');
+  if (overlay) overlay.style.display = 'none';
+
+  // TTS 모드로 자동 전환 (임베딩 차단 시 TTS로 재생)
+  textFullPlayMode = true;
+
+  // 임베딩 차단 안내 배너 생성 (이미 있으면 재사용)
+  var bannerId = 'embed-blocked-banner';
+  var existing = document.getElementById(bannerId);
+  if (existing) existing.remove();
+
+  var banner = document.createElement('div');
+  banner.id = bannerId;
+  banner.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin:0 auto 16px;max-width:600px;text-align:center;';
+  banner.innerHTML = `
+    <div style="font-size:14px;color:#f59e0b;margin-bottom:8px;">⚠️ 이 영상은 임베딩이 차단된 영상입니다</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">따라서 별도의 창으로 YouTube를 제공합니다.<br>YouTube에서 음악을 재생하면서 학습하세요.</div>
+    <button class="btn btn-primary" onclick="window.open('https://www.youtube.com/watch?v=${videoId}','youtube_popup','width=640,height=400')" style="font-size:15px;padding:10px 32px;">🎵 YouTube에서 열기</button>
+  `;
+
+  // fullplay 영역이 보이면 거기에, 아니면 study-video-detail에
+  var fullplay = document.getElementById('study-fullplay');
+  var embedBlockedDiv = document.getElementById('fullplay-embed-blocked');
+  if (fullplay && fullplay.style.display !== 'none' && embedBlockedDiv) {
+    embedBlockedDiv.style.display = 'block';
+    window._youtubePopupVideoId = videoId;
+  } else {
+    // study-video-detail 상단에 삽입
+    var detail = document.getElementById('study-video-detail');
+    if (detail) {
+      detail.insertBefore(banner, detail.firstChild);
+    }
+  }
+}
+
+function startTTSPlayForBlocked() {
+  // 1. 모든 타이머/루프 중단
+  clearInterval(fullPlayTimer);
+  if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
+  if (window._ttsResumeTimer) { clearInterval(window._ttsResumeTimer); window._ttsResumeTimer = null; }
+  clearKaraokeTimers();
+  stopWordFlash();
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+  // 2. YouTube 완전 제거
+  if (ytPlayer) {
+    try { ytPlayer.stopVideo(); } catch(e) {}
+    try { ytPlayer.destroy(); } catch(e) {}
+    ytPlayer = null;
+    ytReady = false;
+  }
+
+  // 3. 상태 설정
+  textFullPlayMode = true;
+  fullPlayPaused = false;
+  fullPlayActive = true;
+
+  // 4. 기존 fullplay 화면을 완전히 숨기고 새로운 TTS 전용 화면 생성
+  document.getElementById('study-fullplay').style.display = 'none';
+  // 사이드바 비디오 컨트롤 숨기기
+  var sidebarControls = document.getElementById('sidebar-video-controls');
+  if (sidebarControls) sidebarControls.style.display = 'none';
+  // yt-container 숨기기
+  var ytCont = document.getElementById('yt-container');
+  if (ytCont) ytCont.style.display = 'none';
+
+  // 기존 TTS 뷰가 있으면 제거
+  var existingTtsView = document.getElementById('tts-only-view');
+  if (existingTtsView) existingTtsView.remove();
+
+  // TTS 전용 화면 생성
+  var ttsView = document.createElement('div');
+  ttsView.id = 'tts-only-view';
+  ttsView.style.cssText = 'padding:16px;max-width:800px;margin:0 auto;';
+
+  // 헤더
+  var header = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:14px;">'
+    + '<button onclick="endTTSOnlyView()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text2);padding:4px 8px;">←</button>'
+    + '<span style="color:var(--text3);">학습하기 - 전체학습 (TTS)</span></div>';
+
+  // 컨트롤 바
+  var controls = '<div style="display:flex;gap:0;align-items:center;justify-content:center;max-width:500px;margin:0 auto 16px;">'
+    + '<button class="btn btn-primary btn-sm" onclick="toggleTTSOnlyPause()" id="tts-only-pause-btn" style="flex:1;padding:10px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:6px 0 0 6px;">⏸ 일시정지</button>'
+    + '<button class="toggle-btn" onclick="toggleEmojiFilter()" id="emoji-filter-btn" style="flex:1;padding:10px 0;border-radius:0;">' + (emojiFilterEnabled ? '🎵 OFF' : '🎵 ON') + '</button>'
+    + '<button class="btn btn-red btn-sm" onclick="endTTSOnlyView()" style="flex:1;padding:10px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">⏹ 종료</button></div>';
+
+  // 문장 목록
+  var sentHtml = '<div id="tts-only-sentences" style="max-height:calc(100vh - 200px);overflow-y:auto;padding:8px;">';
+  var currentPara = -1;
+  fullPlaySentences.forEach(function(s, idx) {
+    if (s.paragraph_idx !== currentPara) {
+      if (currentPara >= 0) sentHtml += '</div>';
+      currentPara = s.paragraph_idx;
+      sentHtml += '<div class="paragraph-group"><div class="paragraph-label">Paragraph ' + (currentPara + 1) + '</div>';
+    }
+    var unknownClass = s.status === 'unknown' ? ' marked-unknown' : '';
+    sentHtml += '<div class="fullplay-sentence' + unknownClass + '" id="tts-s-' + idx + '" onclick="toggleTTSSentenceUnknown(' + idx + ')" style="cursor:pointer;">'
+      + '<span class="sentence-status-dot ' + s.status + '" id="tts-dot-' + idx + '" style="margin-top:6px;"></span>'
+      + '<span class="fullplay-text" id="tts-text-' + idx + '">' + s.text + '</span></div>';
+  });
+  if (currentPara >= 0) sentHtml += '</div>';
+  sentHtml += '</div>';
+
+  ttsView.innerHTML = header + controls + sentHtml;
+  document.getElementById('page-study').appendChild(ttsView);
+
+  // 5. TTS 시작
+  setTimeout(function() {
+    resumeTTSOnlyPlay(0);
+  }, 300);
+}
+
+function resumeTTSOnlyPlay(startIdx) {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+  var voices = window.speechSynthesis.getVoices();
+  var selectedVoice = null;
+  if (selectedVoiceName && voices.length) {
+    selectedVoice = voices.find(function(v) { return v.name === selectedVoiceName; });
+  }
+
+  var idx = startIdx || 0;
+  var sentContainer = document.getElementById('tts-only-sentences');
+
+  function speakNext() {
+    if (!fullPlayActive || fullPlayPaused || idx >= fullPlaySentences.length) return;
+    fullPlayCurrentIdx = idx;
+
+    // 하이라이트
+    document.querySelectorAll('#tts-only-sentences .fullplay-sentence.active').forEach(function(el) { el.classList.remove('active'); });
+    var el = document.getElementById('tts-s-' + idx);
+    if (el) {
+      el.classList.add('active');
+      if (sentContainer) {
+        var containerRect = sentContainer.getBoundingClientRect();
+        var elRect = el.getBoundingClientRect();
+        sentContainer.scrollTop = elRect.top - containerRect.top + sentContainer.scrollTop - sentContainer.clientHeight / 3;
+      }
+    }
+
+    var text = cleanTextForTTS(fullPlaySentences[idx].text);
+    if (!text) { idx++; setTimeout(speakNext, 100); return; }
+
+    // 단어별 하이라이트를 위해 텍스트를 span으로 분리
+    var textEl = document.getElementById('tts-text-' + idx);
+    var words = text.split(/\s+/);
+    if (textEl) {
+      textEl.innerHTML = words.map(function(w, wi) {
+        return '<span id="tts-word-' + idx + '-' + wi + '">' + w + '</span>';
+      }).join(' ');
+    }
+
+    var utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'en-US';
+    utter.rate = 0.9;
+    if (selectedVoice) utter.voice = selectedVoice;
+
+    // 단어별 노란색 하이라이트
+    var curIdx = idx;
+    var boundaryFired = false;
+
+    // 각 단어의 시작 charIndex 계산
+    var wordStarts = [];
+    var pos = 0;
+    words.forEach(function(w, wi) {
+      wordStarts.push(pos);
+      pos += w.length + 1; // +1 for space
+    });
+
+    function highlightWord(wi) {
+      for (var j = 0; j < words.length; j++) {
+        var wEl = document.getElementById('tts-word-' + curIdx + '-' + j);
+        if (!wEl) continue;
+        if (j < wi) { wEl.style.color = '#9ca3af'; wEl.style.fontWeight = ''; }
+        else if (j === wi) { wEl.style.color = '#fbbf24'; wEl.style.fontWeight = '700'; }
+        else { wEl.style.color = ''; wEl.style.fontWeight = ''; }
+      }
+    }
+
+    // 방법 1: onboundary (정확함)
+    utter.onboundary = function(e) {
+      if (e.name === 'word') {
+        boundaryFired = true;
+        // charIndex로 단어 찾기
+        var ci = e.charIndex;
+        for (var wi = words.length - 1; wi >= 0; wi--) {
+          if (ci >= wordStarts[wi]) { highlightWord(wi); break; }
+        }
+      }
+    };
+
+    // 방법 2: onboundary가 안 되면 타이머 fallback
+    var fallbackTimers = [];
+    utter.onstart = function() {
+      // 0.5초 후에도 onboundary가 안 왔으면 타이머 fallback 시작
+      fallbackTimers.push(setTimeout(function() {
+        if (boundaryFired) return;
+        // 타이머 기반: 전체 시간을 단어 수로 나눔
+        var msPerWord = (words.length / 2.5) * 1000 / words.length / utter.rate; // ~2.5 words/sec at rate 1.0
+        words.forEach(function(w, wi) {
+          fallbackTimers.push(setTimeout(function() {
+            if (!boundaryFired) highlightWord(wi);
+          }, wi * msPerWord));
+        });
+      }, 500));
+    };
+
+    utter.onend = function() {
+      fallbackTimers.forEach(clearTimeout);
+      if (textEl) textEl.textContent = fullPlaySentences[idx].text;
+      idx++;
+      if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) setTimeout(speakNext, 300);
+    };
+    utter.onerror = function() {
+      fallbackTimers.forEach(clearTimeout);
+      if (textEl) textEl.textContent = fullPlaySentences[idx].text;
+      idx++;
+      setTimeout(speakNext, 100);
+    };
+
+    // Chrome 버그: speak() 호출 시 스크롤 점프 방지
+    var savedWindowScroll = window.scrollY;
+    var savedContainerScroll = sentContainer ? sentContainer.scrollTop : 0;
+    window.speechSynthesis.speak(utter);
+    window.scrollTo(0, savedWindowScroll);
+    if (sentContainer) sentContainer.scrollTop = savedContainerScroll;
+    requestAnimationFrame(function() {
+      window.scrollTo(0, savedWindowScroll);
+      if (sentContainer) sentContainer.scrollTop = savedContainerScroll;
+    });
+  }
+  speakNext();
+}
+
+function toggleTTSOnlyPause() {
+  fullPlayPaused = !fullPlayPaused;
+  var btn = document.getElementById('tts-only-pause-btn');
+  if (fullPlayPaused) {
+    btn.textContent = '재개'; btn.classList.remove('btn-primary'); btn.classList.add('btn-green');
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  } else {
+    btn.textContent = '일시정지'; btn.classList.remove('btn-green'); btn.classList.add('btn-primary');
+    resumeTTSOnlyPlay(fullPlayCurrentIdx);
+  }
+}
+
+async function toggleTTSSentenceUnknown(idx) {
+  var s = fullPlaySentences[idx];
+  if (!s) return;
+  var el = document.getElementById('tts-s-' + idx);
+  var dot = document.getElementById('tts-dot-' + idx);
+  if (!el) return;
+
+  var isUnknown = el.classList.contains('marked-unknown');
+  var newStatus = isUnknown ? 'known' : 'unknown';
+
+  // 서버에 상태 업데이트
+  await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: newStatus } });
+
+  // UI 업데이트
+  s.status = newStatus;
+  if (newStatus === 'unknown') {
+    el.classList.add('marked-unknown');
+    if (dot) { dot.className = 'sentence-status-dot unknown'; }
+    toast('모르는 문장으로 표시', 'error');
+    // 모르는 문장 TTS 다시 재생
+    if (window.speechSynthesis && s.text) {
+      var text = cleanTextForTTS(s.text);
+      if (text) {
+        var voices = window.speechSynthesis.getVoices();
+        var utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'en-US';
+        utter.rate = 0.8;
+        if (selectedVoiceName && voices.length) {
+          var voice = voices.find(function(v) { return v.name === selectedVoiceName; });
+          if (voice) utter.voice = voice;
+        }
+        window.speechSynthesis.speak(utter);
+      }
+    }
+  } else {
+    el.classList.remove('marked-unknown');
+    if (dot) { dot.className = 'sentence-status-dot known'; }
+    toast('아는 문장으로 표시');
+  }
+}
+
+function endTTSOnlyView() {
+  fullPlayActive = false;
+  fullPlayPaused = false;
+  textFullPlayMode = false;
+  window._embedBlocked = false;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  var ttsView = document.getElementById('tts-only-view');
+  if (ttsView) ttsView.remove();
+  // 사이드바 컨트롤 복원
+  var sidebarControls = document.getElementById('sidebar-video-controls');
+  if (sidebarControls) sidebarControls.style.display = '';
+  if (studyCurrentVideoId) {
+    openVideoStudy(studyCurrentVideoId);
+  } else {
+    loadStudySelect();
+  }
+}
+
+function resumeTTSPlayForBlocked(startIdx) {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+  var voices = window.speechSynthesis.getVoices();
+  var selectedVoice = null;
+  if (selectedVoiceName && voices.length) {
+    selectedVoice = voices.find(function(v) { return v.name === selectedVoiceName; });
+  }
+
+  var idx = startIdx || 0;
+  var sentContainer = document.getElementById('fullplay-sentences');
+
+  function ttsHighlight(i) {
+    // 이전 하이라이트 제거
+    document.querySelectorAll('.fullplay-sentence.active').forEach(function(el) { el.classList.remove('active'); });
+    var el = document.getElementById('fullplay-s-' + i);
+    if (el) {
+      el.classList.add('active');
+      // 컨테이너 내에서만 스크롤
+      if (sentContainer) {
+        var containerRect = sentContainer.getBoundingClientRect();
+        var elRect = el.getBoundingClientRect();
+        var scrollOffset = elRect.top - containerRect.top + sentContainer.scrollTop - sentContainer.clientHeight / 3;
+        sentContainer.scrollTop = Math.max(0, scrollOffset);
+      }
+    }
+  }
+
+  function speakNext() {
+    if (!fullPlayActive || fullPlayPaused || idx >= fullPlaySentences.length) return;
+    fullPlayCurrentIdx = idx;
+    ttsHighlight(idx);
+
+    var text = cleanTextForTTS(fullPlaySentences[idx].text);
+    if (!text) {
+      idx++;
+      setTimeout(speakNext, 100);
+      return;
+    }
+
+    var utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'en-US';
+    utter.rate = 0.9;
+    if (selectedVoice) utter.voice = selectedVoice;
+    utter.onend = function() {
+      idx++;
+      if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) {
+        setTimeout(speakNext, 300);
+      }
+    };
+    utter.onerror = function() {
+      idx++;
+      setTimeout(speakNext, 100);
+    };
+    window.speechSynthesis.speak(utter);
+  }
+
+  setTimeout(speakNext, 200);
+}
+
+function openYouTubePopup() {
+  var videoId = window._youtubePopupVideoId;
+  if (!videoId) { toast('YouTube 영상 ID를 찾을 수 없습니다', 'error'); return; }
+  var url = 'https://www.youtube.com/watch?v=' + videoId;
+  window.open(url, 'youtube_popup', 'width=640,height=400,scrollbars=no,resizable=yes');
+}
+
+function endFullPlayAndBack() {
+  endFullPlay();
+}
+
+function endStudyAndBack() {
+  endStudy();
+}
+
+function stopAllMedia() {
+  // Stop TTS
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  // Pause YouTube
+  if (ytPlayer && ytPlayer.pauseVideo) {
+    try { ytPlayer.pauseVideo(); } catch(e) {}
+  }
+  // Stop fullplay if active
+  if (fullPlayActive) {
+    clearInterval(fullPlayTimer);
+    if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
+    clearKaraokeTimers();
+    stopWordFlash();
+    fullPlayActive = false;
+    fullPlayPaused = false;
+    fullPlayCurrentIdx = -1;
+    textFullPlayMode = false;
+    var pauseBtn = document.getElementById('fullplay-pause-btn');
+    if (pauseBtn) { pauseBtn.textContent = '일시정지'; pauseBtn.classList.remove('btn-green'); pauseBtn.classList.add('btn-primary'); }
+    document.getElementById('study-fullplay').style.display = 'none';
+  }
+  // Hide study area
+  var studyArea = document.getElementById('study-area');
+  if (studyArea) studyArea.style.display = 'none';
+  // Hide YouTube container
+  var ytContainer = document.getElementById('yt-container');
+  if (ytContainer) ytContainer.style.display = 'none';
+}
+
 // ── Review ─────────────────────────────────────────────
 async function loadReview(type) {
   currentReviewType = type || 'sentence';
+  deleteSkipConfirm = false;
   var titleEl = document.getElementById('review-page-title');
   if (titleEl) titleEl.textContent = currentReviewType === 'word' ? '단어 복습' : '문장 복습';
   reviewItems = await api('/api/reviews?type=' + currentReviewType);
@@ -2468,10 +3285,42 @@ async function loadReview(type) {
 
 // ── 전체 복습 (문장/단어 공통) ──
 let reviewAllSelections = {};
+let reviewAllPopupEnabled = true;
+let reviewAllVoiceEnabled = true;
+
+function toggleReviewAllPopup() {
+  reviewAllPopupEnabled = !reviewAllPopupEnabled;
+  const btn = document.getElementById('review-all-popup-btn');
+  if (btn) {
+    btn.textContent = reviewAllPopupEnabled ? '📖 팝업 ON' : '📖 팝업 OFF';
+    btn.classList.toggle('active', reviewAllPopupEnabled);
+  }
+}
+
+function toggleReviewAllVoice() {
+  reviewAllVoiceEnabled = !reviewAllVoiceEnabled;
+  const btn = document.getElementById('review-all-voice-btn');
+  if (btn) {
+    btn.textContent = reviewAllVoiceEnabled ? '🔊 발음 ON' : '🔊 발음 OFF';
+    btn.classList.toggle('active', reviewAllVoiceEnabled);
+  }
+}
+
+function backToReviewModeSelect() {
+  document.getElementById('review-all-list-area').style.display = 'none';
+  document.getElementById('review-area').style.display = 'none';
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  deleteSkipConfirm = false;
+  document.getElementById('review-mode-select').style.display = 'block';
+}
 
 function startReviewAll() {
   document.getElementById('review-mode-select').style.display = 'none';
   document.getElementById('review-all-list-area').style.display = 'block';
+
+  // Breadcrumb 설정
+  const breadcrumbLabel = currentReviewType === 'word' ? '단어복습' : '문장복습';
+  document.getElementById('review-all-breadcrumb-text').textContent = breadcrumbLabel + ' - 전체학습';
 
   const typeLabel = currentReviewType === 'word' ? '단어' : '문장';
   const levelLabels = {0:'신규',1:'1회',2:'2회',3:'3회',4:'4회',5:'5회',6:'6회',7:'완료'};
@@ -2484,6 +3333,7 @@ function startReviewAll() {
       <div style="flex:1; min-width:0;">
         <span style="font-weight:600; font-size:var(--app-font-size, ${currentReviewType === 'word' ? '16px' : '14px'});">${item.text}</span>
         <span style="color:var(--amber); font-size:10px; margin-left:8px;">Lv${item.level} ${levelLabels[item.level] || ''}</span>
+        ${item.item_type === 'word' ? '<button onclick="event.stopPropagation();deleteReviewAllItem(' + i + ', event)" style="padding:2px 6px; border-radius:4px; border:1px solid var(--text3); background:transparent; color:var(--text3); font-size:10px; cursor:pointer; margin-left:6px; vertical-align:middle;" title="모르는 단어 목록 + 복습에서 영구 삭제">🗑️</button>' : ''}
         ${konglishEnabled ? '<div style="font-size:11px; color:var(--amber); margin-top:2px;">' + toKonglish(item.text) + '</div>' : ''}
         ${item.video_title ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + item.video_title + '</div>' : ''}
       </div>
@@ -2515,7 +3365,135 @@ function selectReviewAll(idx, correct) {
   } else {
     forgotBtn.style.background = 'var(--red)'; forgotBtn.style.color = '#fff';
     knowBtn.style.background = 'transparent'; knowBtn.style.color = 'var(--green)';
+    // 잊음 클릭 시 팝업 표시
+    if (reviewAllPopupEnabled) {
+      showReviewAllForgotPopup(idx);
+    }
   }
+}
+
+function showReviewAllForgotPopup(idx) {
+  const item = reviewItems[idx];
+  if (!item) return;
+
+  document.getElementById('review-all-popup-word').textContent = item.text;
+  const meaningEl = document.getElementById('review-all-popup-meaning');
+  meaningEl.textContent = '';
+  meaningEl.style.display = 'none';
+
+  if (item.item_type === 'word') {
+    meaningEl.style.display = 'block';
+    meaningEl.textContent = '뜻 불러오는 중...';
+    getWordMeaningForPopup(item.text).then(function(meaning) {
+      meaningEl.textContent = meaning;
+    });
+  } else if (item.item_type === 'sentence') {
+    // 문장일 때 번역 표시
+    if (translationEnabled) {
+      meaningEl.style.display = 'block';
+      meaningEl.textContent = '번역 불러오는 중...';
+      showTranslation(meaningEl, item.item_id);
+    }
+  }
+
+  document.getElementById('modal-review-all-forgot').classList.add('show');
+
+  // 발음 재생
+  if (reviewAllVoiceEnabled) {
+    if (item.youtube_video_id && item.start_time) {
+      playFromTo(item.youtube_video_id, item.start_time, item.end_time || 0);
+    } else {
+      speakText(item.text);
+    }
+  }
+}
+
+function replayReviewAllForgot() {
+  const wordEl = document.getElementById('review-all-popup-word');
+  if (wordEl && wordEl.textContent) speakText(wordEl.textContent);
+}
+
+function closeReviewAllForgotPopup() {
+  document.getElementById('modal-review-all-forgot').classList.remove('show');
+  stopAllMedia();
+}
+
+let pendingDeleteIdx = null;
+let deleteSkipConfirm = false;
+
+function deleteReviewAllItem(idx, event) {
+  const item = reviewItems[idx];
+  if (!item || item.item_type !== 'word') return;
+
+  // 다시 묻지 않기 활성화 시 바로 삭제
+  if (deleteSkipConfirm) {
+    pendingDeleteIdx = idx;
+    confirmDeleteReviewItem();
+    return;
+  }
+
+  pendingDeleteIdx = idx;
+
+  const popup = document.getElementById('delete-confirm-popup');
+  const word = item.text;
+  document.getElementById('delete-confirm-word').textContent = `"${word}"`;
+
+  // 마우스 위치에 팝업 표시
+  if (event && event.clientX && event.clientY) {
+    let x = event.clientX;
+    let y = event.clientY;
+    popup.style.position = 'fixed';
+    // 화면 밖으로 나가지 않도록 조정
+    const pw = 260, ph = 120;
+    if (x + pw > window.innerWidth) x = window.innerWidth - pw - 10;
+    if (y + ph > window.innerHeight) y = y - ph - 10;
+    if (x < 10) x = 10;
+    if (y < 10) y = 10;
+    popup.style.left = x + 'px';
+    popup.style.top = y + 'px';
+    popup.style.transform = 'none';
+  } else {
+    // default: 화면 중앙
+    popup.style.position = 'fixed';
+    popup.style.left = '50%';
+    popup.style.top = '50%';
+    popup.style.transform = 'translate(-50%, -50%)';
+  }
+  popup.style.display = 'block';
+}
+
+async function confirmDeleteReviewItem() {
+  const idx = pendingDeleteIdx;
+  if (idx === null) return;
+  const item = reviewItems[idx];
+  const popup = document.getElementById('delete-confirm-popup');
+  // 체크박스 확인
+  const noAskCheckbox = document.getElementById('delete-no-ask-again');
+  if (noAskCheckbox && noAskCheckbox.checked) {
+    deleteSkipConfirm = true;
+  }
+  popup.style.display = 'none';
+
+  await api('/api/words/' + item.item_id, { method: 'DELETE' });
+
+  reviewItems.splice(idx, 1);
+  delete reviewAllSelections[idx];
+  const newSelections = {};
+  for (const key of Object.keys(reviewAllSelections)) {
+    const k = parseInt(key);
+    if (k > idx) newSelections[k - 1] = reviewAllSelections[k];
+    else newSelections[k] = reviewAllSelections[k];
+  }
+  reviewAllSelections = newSelections;
+  pendingDeleteIdx = null;
+
+  toast(`"${item.text}" 삭제 완료`);
+  startReviewAll();
+}
+
+function cancelDeleteReviewItem() {
+  pendingDeleteIdx = null;
+  document.getElementById('delete-confirm-popup').style.display = 'none';
 }
 
 async function submitReviewAll() {
@@ -2568,6 +3546,11 @@ function endReviewAll() {
 function startReviewIndividual() {
   document.getElementById('review-mode-select').style.display = 'none';
   document.getElementById('review-area').style.display = 'block';
+
+  // Breadcrumb 설정
+  const typeLabel = currentReviewType === 'word' ? '단어복습' : '문장복습';
+  document.getElementById('review-individual-breadcrumb-text').textContent = typeLabel + ' - 개별학습';
+
   reviewIndex = 0;
   reviewRevealed = false;
   updateReviewVoiceBtn();

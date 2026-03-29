@@ -65,6 +65,19 @@ def get_transcript(url):
         raise RuntimeError(f"Could not get transcript for {video_id}: {e}")
 
 
+def get_video_title(video_id):
+    """Get YouTube video title from oEmbed API."""
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        req = urllib.request.Request(oembed_url, headers={"User-Agent": "EnglishMaster/1.0"})
+        import json
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            return data.get("title", f"YouTube - {video_id}")
+    except Exception:
+        return None
+
+
 def _clean_text(text):
     """Remove annotations like [Music], [Applause] etc."""
     text = re.sub(r'\[.*?\]', '', text).strip()
@@ -197,10 +210,14 @@ def process_video(url):
             clean = _capitalize_first(text.strip())
             all_sentences.append((para_idx, s_idx, clean, round(start, 2), round(end, 2)))
 
-    # Auto-generate title from first sentence of transcript
-    if all_sentences and title.startswith("YouTube - "):
-        from text_utils import generate_title
-        title = generate_title(all_sentences[0][2])
+    # YouTube 실제 제목 가져오기 시도
+    if title.startswith("YouTube - "):
+        yt_title = get_video_title(video_id)
+        if yt_title:
+            title = yt_title
+        elif all_sentences:
+            from text_utils import generate_title
+            title = generate_title(all_sentences[0][2])
 
     return video_id, title, all_sentences
 

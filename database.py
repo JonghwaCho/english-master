@@ -478,6 +478,15 @@ def mark_word(word_id, status):
     conn.close()
 
 
+def delete_word(word_id):
+    """모르는 단어 목록 + 복습 목록에서 영구 삭제"""
+    conn = get_conn()
+    conn.execute("DELETE FROM reviews WHERE item_type='word' AND item_id=?", (word_id,))
+    conn.execute("DELETE FROM words WHERE id=?", (word_id,))
+    conn.commit()
+    conn.close()
+
+
 # ── Reviews (Spaced Repetition / SRS) ───────────────────
 #
 # SRS (Spaced Repetition System) - 에빙하우스 망각곡선 기반 간격 반복 학습
