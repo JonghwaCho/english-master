@@ -132,6 +132,18 @@ def init_db():
         )
     """)
 
+    # AI 결과 캐싱 테이블 (직독직해, 유사문장, 문법, 단어설명)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ai_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sentence_text TEXT NOT NULL,
+            action TEXT NOT NULL,
+            result TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(sentence_text, action)
+        )
+    """)
+
     # 기존 reviews 데이터를 study_log로 마이그레이션 (최초 1회)
     migrated = conn.execute("SELECT COUNT(*) as c FROM study_log").fetchone()["c"]
     if migrated == 0:

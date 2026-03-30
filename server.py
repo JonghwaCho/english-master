@@ -151,11 +151,83 @@ def sentence_translation_worker():
                 pass
 
 
+# ── AI 결과 사전 생성 백그라운드 큐 ──────────────────────────────
+ai_precache_queue = Queue()
+
+AI_PRECACHE_ACTIONS = ["literal", "grammar", "words"]  # 사전 캐시할 액션 목록
+
+def ai_precache_worker():
+    """백그라운드 스레드: 큐에서 sentence_id를 꺼내 AI 결과를 미리 생성/캐싱"""
+    while True:
+        try:
+            sentence_id = ai_precache_queue.get()
+            if sentence_id is None:
+                break
+
+            conn = db.get_conn()
+            row = conn.execute("SELECT text FROM sentences WHERE id = ?", (sentence_id,)).fetchone()
+            if not row:
+                conn.close()
+                ai_precache_queue.task_done()
+                continue
+
+            sentence_text = row["text"].strip()
+            # 아이콘/이모지 제거
+            import re as re_mod
+            clean = re_mod.sub(r'[\u2600-\u27BF\U0001F300-\U0001F9FF♪♫♬♩♭♮♯🎵🎶🎤🎧🎼]', '', sentence_text).strip()
+            if not clean or len(clean) < 3:
+                conn.close()
+                ai_precache_queue.task_done()
+                continue
+
+            settings = load_ai_settings()
+            if not settings.get("api_key"):
+                conn.close()
+                ai_precache_queue.task_done()
+                continue
+
+            for action in AI_PRECACHE_ACTIONS:
+                # 이미 캐시된 것 건너뛰기
+                existing = conn.execute(
+                    "SELECT id FROM ai_cache WHERE sentence_text = ? AND action = ?",
+                    (clean, action)
+                ).fetchone()
+                if existing:
+                    continue
+
+                try:
+                    prompt = _build_ai_prompt(clean, action)
+                    if not prompt:
+                        continue
+                    result = call_ai(settings, prompt)
+                    if result:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO ai_cache (sentence_text, action, result) VALUES (?, ?, ?)",
+                            (clean, action, result.strip())
+                        )
+                        conn.commit()
+                        print(f"[AI-Cache] Pre-cached {action} for: {clean[:40]}...", flush=True)
+                    time.sleep(1)  # API 부하 방지
+                except Exception as e:
+                    print(f"[AI-Cache] Error {action} for {clean[:30]}: {e}", flush=True)
+
+            conn.close()
+            ai_precache_queue.task_done()
+        except Exception as e:
+            logging.error(f"[AI-Cache] Worker error: {e}")
+            try:
+                ai_precache_queue.task_done()
+            except:
+                pass
+
+
 # 워커 스레드 시작 (데몬 모드 = 서버 종료 시 자동 종료)
 meaning_thread = threading.Thread(target=meaning_worker, daemon=True)
 meaning_thread.start()
 sentence_trans_thread = threading.Thread(target=sentence_translation_worker, daemon=True)
 sentence_trans_thread.start()
+ai_precache_thread = threading.Thread(target=ai_precache_worker, daemon=True)
+ai_precache_thread.start()
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 # Disable caching for development
@@ -457,6 +529,8 @@ def api_mark_sentence():
         db.schedule_review(sid, "sentence", level=0)
         # 백그라운드에서 AI 번역 (모르는 문장 → 고품질 번역 제공)
         sentence_trans_queue.put(sid)
+        # 백그라운드에서 AI 결과 사전 생성 (직독직해, 문법, 단어)
+        ai_precache_queue.put(sid)
 
     return jsonify({"ok": True})
 
@@ -509,6 +583,64 @@ def api_get_reviews():
         r["level_name"] = get_level_name(r.get("level", 0))
         r["next_review_text"] = format_next_review(r.get("next_review"))
     return jsonify(reviews)
+
+
+@app.route("/api/reviews/remaining")
+def api_reviews_remaining():
+    """아직 due가 아닌 리뷰 항목 수와 다음 복습 시간"""
+    item_type = request.args.get("type", "sentence")
+    now = datetime.now().isoformat()
+    conn = db.get_conn()
+    row = conn.execute(
+        "SELECT COUNT(*) as c, MIN(next_review) as next_time FROM reviews WHERE item_type=? AND next_review > ? AND level < 7",
+        (item_type, now)
+    ).fetchone()
+    conn.close()
+    remaining = row["c"] if row else 0
+    next_time = None
+    if row and row["next_time"]:
+        try:
+            from datetime import datetime as dt
+            nt = dt.fromisoformat(row["next_time"])
+            diff = (nt - dt.now()).total_seconds()
+            if diff < 60:
+                next_time = f"{int(diff)}초 후"
+            elif diff < 3600:
+                next_time = f"{int(diff/60)}분 후"
+            else:
+                next_time = f"{int(diff/3600)}시간 {int((diff%3600)/60)}분 후"
+        except:
+            next_time = row["next_time"][:16]
+    return jsonify({"remaining": remaining, "nextTime": next_time})
+
+
+@app.route("/api/reviews/all")
+def api_reviews_all():
+    """스케줄 무시 - 전체 리뷰 항목 반환 (level < 7)"""
+    item_type = request.args.get("type", "sentence")
+    conn = db.get_conn()
+    if item_type == "sentence":
+        rows = conn.execute("""
+            SELECT r.*, s.text, s.video_id, s.start_time, s.end_time,
+                   v.title as video_title, v.video_id as youtube_video_id, v.content_type
+            FROM reviews r
+            JOIN sentences s ON r.item_id = s.id
+            JOIN videos v ON s.video_id = v.id
+            WHERE r.item_type='sentence' AND r.level < 7
+            ORDER BY r.next_review
+        """).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT r.*, w.word as text
+            FROM reviews r JOIN words w ON r.item_id = w.id
+            WHERE r.item_type='word' AND r.level < 7
+            ORDER BY r.next_review
+        """).fetchall()
+    conn.close()
+    result = [dict(r) for r in rows]
+    for r in result:
+        r["level_name"] = get_level_name(r.get("level", 0))
+    return jsonify(result)
 
 
 @app.route("/api/reviews/process", methods=["POST"])
@@ -930,17 +1062,50 @@ def api_ai_test():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/ai/action", methods=["POST"])
-def api_ai_action():
-    settings = load_ai_settings()
-    if not settings.get("api_key"):
-        return jsonify({"error": "설정에서 AI API 키를 먼저 설정해주세요"}), 400
+def _build_ai_prompt(sentence, action, quiz_types=None):
+    """AI 액션별 프롬프트 생성 (캐시 워커와 API 공용)"""
+    if quiz_types is None:
+        quiz_types = ["선택", "어순", "번역"]
 
-    data = request.json
-    sentence = data.get("sentence", "")
-    action = data.get("action", "")
+    quiz_type_map = {
+        "선택": ("빈칸 채우기", "핵심 단어를 빈칸(____)으로 만들고, 보기를 1) 2) 3) 형식으로 3개 제시하세요."),
+        "어순": ("어순 배열", "문장의 단어들을 섞어서 나열하고, 올바른 순서로 배열하는 문제를 만드세요. **단어:** 로 시작하세요."),
+        "번역": ("한→영 번역", "한국어 번역을 보여주고 영어로 번역하게 하세요. **한국어:** 로 시작하세요."),
+    }
+    quiz_parts = []
+    for i, qt in enumerate(quiz_types[:3], 1):
+        title, instruction = quiz_type_map.get(qt, quiz_type_map["선택"])
+        quiz_parts.append(f"📝 퀴즈 {i} - {title}\n{instruction}")
+    quiz_body = "\n\n".join(quiz_parts)
 
     prompts = {
+        "literal": f"""다음 영어 문장을 직독직해로 분석해주세요.
+
+문장: "{sentence}"
+
+아래 형식으로 **정확히** 작성해주세요 (태그와 구분자를 반드시 지켜주세요):
+
+[WORDS]
+영어단어나구::한국어뜻
+영어단어나구::한국어뜻
+[/WORDS]
+[CHUNKS]
+의미청크(2~4단어)::한국어뜻
+의미청크(2~4단어)::한국어뜻
+[/CHUNKS]
+[FULL]
+자연스러운 한국어 전체 번역 1줄
+[/FULL]
+[TIP]
+직독직해 포인트 1~2줄
+[/TIP]
+
+규칙:
+- [WORDS]: 문장의 모든 단어를 앞에서부터 순서대로 하나씩 분석 (빠뜨리지 마세요). 관사(a, the), 접속사(and, but), 감탄사(ooh, oh) 등도 반드시 포함
+- [CHUNKS]: 같은 문장을 2~4단어씩 의미 덩어리로 끊어서 분석. 예: "I will::나는 ~할 것이다", "always love you::항상 당신을 사랑하다"
+- 한국어 뜻은 간결하게 (1~5단어)
+- :: 구분자를 반드시 사용""",
+
         "similar": f"""다음 영어 문장과 비슷한 패턴의 영어 문장 3개를 만들어주세요.
 
 원문: "{sentence}"
@@ -962,16 +1127,9 @@ def api_ai_action():
 
 문장: "{sentence}"
 
-📝 퀴즈 1 - 빈칸 채우기
-핵심 단어를 빈칸으로 만들고, 보기 3개를 제시하세요.
+{quiz_body}
 
-📝 퀴즈 2 - 어순 배열
-단어를 섞어서 제시하고, 올바른 순서로 배열하는 문제를 만드세요.
-
-📝 퀴즈 3 - 한→영 번역
-한국어 번역을 보여주고, 영작하게 하세요.
-
-각 퀴즈 뒤에 ✅ 정답과 해설을 한국어로 작성하세요.""",
+각 퀴즈 뒤에 ✅ 정답: 으로 시작하는 정답과 해설을 한국어로 작성하세요.""",
 
         "grammar": f"""다음 영어 문장의 문법 구조를 한국어로 상세히 분석해주세요.
 
@@ -980,15 +1138,14 @@ def api_ai_action():
 아래 형식으로 설명해주세요:
 
 🔍 전체 문장 구조
-- 문장의 기본 형태(1~5형식) 파악
-- 주어(S) / 동사(V) / 목적어(O) / 보어(C) 등 표시
+- 문장의 기본 구조 (주어 + 동사 + 목적어 등)를 설명
 
-📖 핵심 문법 포인트
-- 사용된 시제, 태(능동/수동), 조동사 등 설명
-- 해당 문법이 왜 이 문장에서 사용되었는지 설명
+📝 핵심 문법 요소
+- 시제, 조동사, 접속사 등 핵심 문법 요소 설명
+- 각 구성 요소가 문장에서 하는 역할
 
-🔗 구/절 분석
-- 전치사구, 관계사절, 부사절 등이 있으면 분석
+🔗 구문 분석
+- 주어부, 술어부, 수식어 등을 구분
 - 수식 관계 설명
 
 💡 핵심 정리
@@ -1011,13 +1168,55 @@ def api_ai_action():
 
 중요하지 않은 단어(a, the, is 등)는 간단히 설명하고, 핵심 단어 위주로 상세히 설명해주세요."""
     }
+    return prompts.get(action)
 
-    prompt = prompts.get(action)
+
+@app.route("/api/ai/action", methods=["POST"])
+def api_ai_action():
+    settings = load_ai_settings()
+    if not settings.get("api_key"):
+        return jsonify({"error": "설정에서 AI API 키를 먼저 설정해주세요"}), 400
+
+    data = request.json
+    sentence = data.get("sentence", "").strip()
+    action = data.get("action", "")
+    quiz_types = data.get("quizTypes", ["선택", "어순", "번역"])
+
+    # 1) 캐시 체크 (퀴즈는 매번 새로 생성)
+    if action != "quiz" and sentence:
+        try:
+            conn = db.get_conn()
+            cached = conn.execute(
+                "SELECT result FROM ai_cache WHERE sentence_text = ? AND action = ?",
+                (sentence, action)
+            ).fetchone()
+            conn.close()
+            if cached:
+                print(f"[AI-Cache] HIT: {action} for {sentence[:40]}...", flush=True)
+                return jsonify({"result": cached["result"], "cached": True})
+        except Exception:
+            pass
+
+    # 2) 프롬프트 생성 (_build_ai_prompt 공용 함수 사용)
+    prompt = _build_ai_prompt(sentence, action, quiz_types)
     if not prompt:
         return jsonify({"error": "알 수 없는 액션입니다"}), 400
 
+    # 3) AI 호출
     try:
         result = call_ai(settings, prompt)
+        # 4) 결과 캐싱 (퀴즈 제외)
+        if result and action != "quiz":
+            try:
+                conn = db.get_conn()
+                conn.execute(
+                    "INSERT OR REPLACE INTO ai_cache (sentence_text, action, result) VALUES (?, ?, ?)",
+                    (sentence, action, result.strip())
+                )
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
         return jsonify({"result": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
