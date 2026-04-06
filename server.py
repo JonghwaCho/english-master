@@ -535,6 +535,17 @@ def api_mark_sentence():
     return jsonify({"ok": True})
 
 
+@app.route("/api/study/reset-unknown", methods=["POST"])
+def api_reset_unknown_sentences():
+    """Reset all unknown sentences for a video back to 'new' status and reset their review level to 0"""
+    data = request.json
+    video_id = data.get("video_id")
+    if not video_id:
+        return jsonify({"error": "video_id required"}), 400
+    db.reset_unknown_sentences(video_id)
+    return jsonify({"ok": True})
+
+
 # ── API: Words ──────────────────────────────────────────
 
 @app.route("/api/words/unknown", methods=["GET"])

@@ -384,6 +384,28 @@ def mark_sentence(sentence_id, status):
     log_study_activity(sentence_id, 'sentence', 'study', status == 'known')
 
 
+def reset_unknown_sentences(video_id):
+    """Reset all unknown sentences for a video: status back to 'new', review level to 0"""
+    conn = get_conn()
+    # Get sentence IDs that are unknown for this video
+    rows = conn.execute(
+        "SELECT id FROM sentences WHERE video_id=? AND status='unknown'", (video_id,)
+    ).fetchall()
+    if rows:
+        ids = [r['id'] for r in rows]
+        # Reset sentence status to 'new'
+        conn.execute(
+            f"UPDATE sentences SET status='new' WHERE id IN ({','.join('?' * len(ids))})", ids
+        )
+        # Reset review level to 0 for these sentences
+        for sid in ids:
+            conn.execute(
+                "DELETE FROM reviews WHERE item_id=? AND item_type='sentence'", (sid,)
+            )
+        conn.commit()
+    conn.close()
+
+
 def get_unknown_sentences(video_id=None):
     conn = get_conn()
     sql = """

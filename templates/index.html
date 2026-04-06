@@ -42,7 +42,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif; bac
 
 /* Main */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.page { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding: 32px; }
+.page { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding: 32px; max-width: 1200px; margin: 0 auto; width: 100%; }
 .page.active { display: flex; }
 .page-title { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
 
@@ -96,6 +96,8 @@ select { padding: 6px 10px; background: var(--bg); border: 1px solid var(--borde
 .study-meta { font-size: 13px; color: var(--text3); margin-bottom: 16px; }
 .study-buttons { display: flex; gap: 16px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
 .study-buttons .btn { min-width: 140px; padding: 14px 24px; font-size: 16px; }
+.hint-chip { display:inline-block; padding:6px 14px; border-radius:20px; background:var(--bg3); border:1px solid var(--border); font-size:14px; color:var(--text); opacity:0.35; font-weight:500; letter-spacing:0.3px; }
+#review-listen-buttons .study-buttons .btn { min-width:auto; }
 .study-progress { height: 4px; background: var(--bg3); border-radius: 2px; margin-bottom: 24px; overflow: hidden; }
 .study-progress-bar { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s; }
 
@@ -257,6 +259,40 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 .review-all-check input[name]:checked + label.know,
 .review-all-check label.know.selected { background: rgba(34,197,94,0.15); border-color: var(--green); color: var(--green); }
 .review-all-check label.dont-know.selected { background: rgba(239,68,68,0.15); border-color: var(--red); color: var(--red); }
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .sidebar { width: 200px; }
+}
+@media (max-width: 900px) {
+  body { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar-header { padding: 12px 16px; }
+  .sidebar-categories, .sidebar-toggles, .sidebar-footer { display: none; }
+  .nav-item { white-space: nowrap; padding: 10px 14px; border-left: none; border-bottom: 3px solid transparent; }
+  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--primary); }
+  .page { padding: 16px; }
+  .page-title { font-size: 20px; }
+  .study-card { padding: 20px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .page { padding: 10px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-number { font-size: 24px; }
+  .study-card { padding: 16px; }
+  .study-sentence { font-size: 16px !important; }
+  .study-buttons .btn { min-width: 100px; padding: 10px 16px; font-size: 14px; }
+  .fullplay-sentence { font-size: 13px !important; }
+  .word-flash-word { font-size: 22px; }
+  .video-item { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .review-all-item { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .review-all-item .word-text { min-width: auto; }
+  .review-all-check { margin-left: 0; }
+  #review-listen-buttons .study-buttons { gap:8px; }
+  #review-listen-buttons .study-buttons .btn { padding:10px 14px; font-size:13px; }
+}
 </style>
 </head>
 <body>
@@ -319,8 +355,8 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 <!-- Main Content -->
 <div class="main">
   <!-- YouTube Player -->
-  <div id="yt-container" style="display:none; background:var(--bg2); border-bottom:1px solid var(--border); padding:16px; text-align:center; flex-shrink:0; position:sticky; top:0; z-index:30;">
-    <div id="yt-player" style="margin:0 auto; border-radius:8px; overflow:hidden; display:inline-block;"></div>
+  <div id="yt-container" style="display:none; background:var(--bg2); border-bottom:1px solid var(--border); padding:16px; text-align:center; flex-shrink:0; position:sticky; top:0; z-index:30; max-width:1200px; margin:0 auto; width:100%;">
+    <div id="yt-player" style="margin:0 auto; border-radius:8px; overflow:hidden; display:inline-block; max-width:100%;"></div>
   </div>
 
   <!-- Dashboard -->
@@ -458,7 +494,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
       </div>
     </div>
     <!-- Full video play area -->
-    <div id="study-fullplay" style="display:none;">
+    <div id="study-fullplay" style="display:none; max-width:1000px; margin:0 auto; width:100%;">
       <div id="study-fullplay-breadcrumb" style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:14px;">
         <button onclick="endFullPlayAndBack()" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text2); padding:4px 8px;" title="뒤로가기">←</button>
         <span style="color:var(--text3);">학습하기 - 전체학습</span>
@@ -478,16 +514,16 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
           <button class="btn btn-primary" onclick="manualStartFullPlay()" style="font-size:18px; padding:16px 48px;">▶ 재생 시작</button>
           <div style="font-size:12px; color:var(--text3); margin-top:8px;">자동 재생이 시작되지 않으면 이 버튼을 눌러주세요</div>
         </div>
-        <div id="fullplay-btn-bar" style="display:flex; gap:0; align-items:center; justify-content:center; width:600px; margin:0 auto;">
+        </div>
+      <div id="fullplay-sticky-area" style="position:sticky;top:0;z-index:20;background:var(--bg);padding:10px 0;text-align:center;">
+        <div id="fullplay-btn-bar" style="display:flex; gap:0; align-items:center; justify-content:center; max-width:600px; width:100%; margin:0 auto;">
           <button class="btn btn-primary btn-sm" onclick="toggleFullPlayPause()" id="fullplay-pause-btn" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:6px 0 0 6px;">일시정지</button>
-          <button class="toggle-btn" onclick="toggleFullplayTranslation()" id="fullplay-trans-btn" style="flex:1;padding:8px 0;border-radius:0;">해석 OFF</button>
-          <button class="toggle-btn" onclick="toggleWordFlash()" id="wordflash-toggle-btn" style="flex:1;padding:8px 0;border-radius:0;">단어 OFF</button>
-          <button class="toggle-btn" onclick="toggleEmojiFilter()" id="emoji-filter-btn" style="flex:1;padding:8px 0;border-radius:0;">🎵 OFF</button>
+          <button class="toggle-btn" onclick="toggleFullplayTranslation()" id="fullplay-trans-btn" style="flex:1;padding:8px 0;border-radius:0;text-align:center;justify-content:center;">해석 OFF</button>
+          <button class="toggle-btn" onclick="toggleWordFlash()" id="wordflash-toggle-btn" style="flex:1;padding:8px 0;border-radius:0;text-align:center;justify-content:center;">단어 OFF</button>
+          <button class="toggle-btn" onclick="toggleEmojiFilter()" id="emoji-filter-btn" style="flex:1;padding:8px 0;border-radius:0;text-align:center;justify-content:center;">이모지 OFF</button>
           <button class="btn btn-red btn-sm" onclick="endFullPlay()" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">종료</button>
         </div>
         <div style="font-size:12px; color:var(--text3); margin-top:8px;">R=모르는문장 | Y=아는문장 | Space=일시정지</div>
-      </div>
-      <div id="fullplay-sticky-area" style="position:sticky;top:0;z-index:20;background:var(--bg);">
         <div class="word-flash-box" id="word-flash-box" style="display:none;cursor:pointer;max-width:480px;margin:0 auto;" onclick="saveWordFlashWords()" title="클릭하면 이 단어 + 앞뒤 단어를 모르는 단어에 저장">
           <div class="word-flash-label">Word Flash</div>
           <div class="word-flash-word" id="word-flash-word">-</div>
@@ -561,15 +597,20 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
         <button onclick="backToReviewModeSelect()" style="background:none; border:none; cursor:pointer; font-size:18px; color:var(--text2); padding:4px 8px;" title="뒤로가기">←</button>
         <span style="color:var(--text3);" id="review-individual-breadcrumb-text">단어복습 - 개별학습</span>
       </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <div></div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="toggle-btn" id="review-voice-btn" onclick="toggleReviewVoice()">🔊 음성 ON</button>
-          <button class="toggle-btn" id="review-popup-toggle-btn" onclick="toggleReviewPopup()">📖 팝업 ON</button>
-        </div>
+      <!-- 시작 화면 -->
+      <div id="review-start-screen" style="text-align:center; padding:60px 20px;">
+        <div style="font-size:48px; margin-bottom:16px;">📝</div>
+        <h3 style="font-size:20px; margin-bottom:8px;" id="review-start-title">복습 준비 완료</h3>
+        <p style="color:var(--text3); margin-bottom:24px;" id="review-start-desc"></p>
+        <button class="btn btn-primary" onclick="beginReviewIndividual()" style="font-size:18px; padding:14px 48px;">시작하기</button>
       </div>
-      <div class="study-progress"><div class="study-progress-bar" id="review-progress-bar"></div></div>
-      <div id="review-layout" style="display:flex; gap:20px; transition:all 0.3s;">
+      <div class="study-progress review-running" style="margin-bottom:12px;"><div class="study-progress-bar" id="review-progress-bar"></div></div>
+      <div class="review-running" style="display:flex; justify-content:center; align-items:center; gap:8px; margin-bottom:16px;">
+        <button class="toggle-btn" id="review-voice-btn" onclick="toggleReviewVoice()" style="width:auto; padding:6px 14px; font-size:12px;">🔊 음성 ON</button>
+        <button class="toggle-btn" id="review-popup-toggle-btn" onclick="toggleReviewPopup()" style="width:auto; padding:6px 14px; font-size:12px;">📖 팝업 ON</button>
+        <button class="btn btn-outline btn-sm" onclick="endIndividualReview()" style="padding:6px 14px; font-size:12px;">🚪 학습 종료</button>
+      </div>
+      <div id="review-layout" class="review-running" style="display:flex; gap:20px; transition:all 0.3s;">
         <!-- 왼쪽: 복습 카드 -->
         <div id="review-card-col" style="flex:1; transition:all 0.3s;">
           <div class="study-card">
@@ -579,11 +620,24 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
               클릭하여 확인
             </div>
             <div class="study-translation" id="review-translation"></div>
+            <!-- 4-button listening phase (YouTube sentences only) -->
+            <div id="review-listen-buttons" style="display:none;">
+              <div id="review-hint-area" style="display:none; margin:16px 0;">
+                <div style="font-size:11px; color:var(--text3); margin-bottom:8px; text-align:center;">힌트 단어</div>
+                <div id="review-hint-chips" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
+              </div>
+              <div class="study-buttons" style="gap:10px;">
+                <button class="btn btn-outline" onclick="replayReviewListening()" style="min-width:auto; padding:12px 18px; font-size:14px;">🔊 다시듣기</button>
+                <button class="btn btn-outline" onclick="showListeningHint()" id="review-hint-btn" style="min-width:auto; padding:12px 18px; font-size:14px; color:var(--amber); border-color:var(--amber);">👂 잘안들림</button>
+                <button class="btn btn-primary" onclick="revealFromListening()" style="min-width:auto; padding:12px 18px; font-size:14px;">📖 내용확인</button>
+                <button class="btn btn-green" onclick="reviewMarkPerfect()" style="min-width:auto; padding:12px 18px; font-size:14px;">✅ 완벽숙지</button>
+              </div>
+            </div>
             <div id="review-revealed" style="display:none;">
               <div class="study-buttons">
                 <button class="btn btn-outline btn-sm" onclick="replayReviewItem()">&#9654; 다시 듣기</button>
-                <button class="btn btn-red" onclick="reviewMark(false)">잊어버렸어요</button>
-                <button class="btn btn-green" onclick="reviewMark(true)">기억나요!</button>
+                <button class="btn btn-red" onclick="reviewMark(false, event)">잊어버렸어요</button>
+                <button class="btn btn-green" onclick="reviewMark(true, event)">기억나요!</button>
               </div>
               <div class="ai-tools" style="margin-top:12px; display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
                 <button class="btn btn-outline btn-sm" onclick="aiAction('literal','review')">📋 직독직해</button>
@@ -610,9 +664,6 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
             <div id="ai-result-review" style="flex:1; overflow-y:auto; font-size:14px; line-height:1.8; color:var(--text);"></div>
           </div>
         </div>
-      </div>
-      <div style="display:flex; justify-content:center; margin-top:20px;">
-        <button class="btn" onclick="endIndividualReview()" style="padding:10px 28px; font-size:15px; background:var(--bg2); border:1px solid var(--border); color:var(--text);">🚪 학습 종료</button>
       </div>
     </div>
   </div>
@@ -725,6 +776,24 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
       <p style="font-size:12px;color:var(--text3);margin-top:8px;">R키 또는 마우스 클릭으로 모르는 문장 다시 재생 시 적용됩니다.</p>
     </div>
     <div class="card" style="margin-top:16px;">
+      <div class="card-title">🎤 카라오케 힌트 시작 회차</div>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="karaoke-reveal" value="1" onchange="setKaraokeRevealFrom(1)"> 1회부터
+        </label>
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="karaoke-reveal" value="2" onchange="setKaraokeRevealFrom(2)"> 2회부터
+        </label>
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="karaoke-reveal" value="3" onchange="setKaraokeRevealFrom(3)"> 3회부터
+        </label>
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="karaoke-reveal" value="4" onchange="setKaraokeRevealFrom(4)"> 4회부터
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;">문장별 학습에서 다시듣기 시 카라오케 하이라이트로 단어가 잠깐 보이기 시작하는 회차입니다.</p>
+    </div>
+    <div class="card" style="margin-top:16px;">
       <div class="card-title">👂 유튜브 문장 복습 모드</div>
       <div style="margin-top:12px; display:flex; gap:12px; align-items:center;">
         <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
@@ -735,6 +804,18 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
         </label>
       </div>
       <p style="font-size:12px;color:var(--text3);margin-top:8px;">듣기 먼저: 문장을 숨기고 영상 소리를 먼저 들려줍니다. 히어링 연습에 효과적!</p>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">🔄 전체학습 시 모르는 문장 리셋</div>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center;">
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="fullplay-reset" value="on" onchange="setFullplayReset(true)"> 리셋 ON
+        </label>
+        <label style="font-size:14px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="fullplay-reset" value="off" onchange="setFullplayReset(false)"> 리셋 OFF
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;">ON: 전체학습 시작 시 이전에 모르는 문장으로 표시된 문장들을 초기화합니다. 매번 새로 학습할 수 있습니다.</p>
     </div>
     <div class="card" style="margin-top:16px;">
       <div class="card-title">🔤 텍스트 크기</div>
@@ -805,8 +886,8 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 </div>
 
 <!-- 잊은 문장 팝업 -->
-<div class="modal-overlay" id="modal-review-popup">
-  <div class="modal" style="max-width:700px; padding:28px;">
+<div id="modal-review-popup" style="display:none; position:fixed; z-index:200;">
+  <div class="modal" style="max-width:700px; padding:28px; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
     <div id="review-popup-label" style="font-size:14px; font-weight:600; margin-bottom:10px;"></div>
     <div id="review-popup-text" style="font-size:26px; font-weight:700; line-height:1.6; margin-bottom:6px; text-align:center;"></div>
     <div id="review-popup-meaning" style="font-size:16px; color:var(--text3); margin-bottom:6px; text-align:center; min-height:20px;"></div>
@@ -919,6 +1000,15 @@ let studyCurrentVideoInfo = null;
 let reviewItems = [];
 let reviewIndex = 0;
 let reviewRevealed = false;
+let reviewListeningPhase = false;
+let fullplayResetUnknown = localStorage.getItem('fullplayResetUnknown') !== 'false'; // default ON
+const COMMON_HINT_WORDS = [
+  'the','have','about','people','world','always','something','before',
+  'another','really','never','still','things','between','better','every',
+  'under','enough','around','place','during','without','important','almost',
+  'change','different','problem','question','possible','together','morning',
+  'already','money','family','country','small','water','number','believe','school'
+];
 let currentReviewType = 'sentence';
 let categories = [];
 let currentCategoryFilter = null;
@@ -1037,10 +1127,22 @@ function startKaraoke(uid, text, startTime, endTime) {
     const t = setTimeout(() => {
       if (idx > 0) {
         const prev = document.getElementById(`kw-${uid}-${idx - 1}`);
-        if (prev) { prev.classList.remove('highlighted'); prev.classList.add('spoken'); }
+        if (prev) {
+          prev.classList.remove('highlighted'); prev.classList.add('spoken');
+          // Re-mask word if it was hidden (only if karaoke reveal is active)
+          if (prev.dataset.word && studyReplayCount >= studyKaraokeRevealFrom) {
+            prev.textContent = prev.dataset.word.replace(/./g, '·'); prev.style.opacity = '0.3'; prev.style.color = 'var(--text3)';
+          }
+        }
       }
       const el = document.getElementById(`kw-${uid}-${idx}`);
-      if (el) el.classList.add('highlighted');
+      if (el) {
+        // Reveal masked word during karaoke highlight (only from configured replay count)
+        if (el.dataset.word && studyReplayCount >= studyKaraokeRevealFrom) {
+          el.textContent = el.dataset.word; el.style.opacity = '1'; el.style.color = '';
+        }
+        el.classList.add('highlighted');
+      }
     }, delay);
     karaokeTimers.push(t);
   });
@@ -1139,10 +1241,15 @@ function updateTranslationUI() {
 function toggleTTS() {
   ttsEnabled = !ttsEnabled;
   localStorage.setItem('ttsEnabled', ttsEnabled);
+  updateTTSUI();
+  if (!ttsEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function updateTTSUI() {
   var btn = document.getElementById('tts-toggle-btn');
+  if (!btn) return;
   btn.innerHTML = ttsEnabled ? '<span>🔊 음성</span><span class="toggle-icon">ON</span>' : '<span>🔇 음성</span><span class="toggle-icon">OFF</span>';
   btn.classList.toggle('on', ttsEnabled);
-  if (!ttsEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
 }
 
 function changeTTSVoice(name) {
@@ -1188,6 +1295,7 @@ async function showTranslation(el, sentenceId) {
 
 updateVideoUI();
 updateTranslationUI();
+updateTTSUI();
 
 // ── API helpers ────────────────────────────────────────
 async function api(url, opts = {}) {
@@ -1233,10 +1341,31 @@ function showPage(page, skipHistory) {
   document.querySelectorAll('.nav-item').forEach(function(n, i) {
     n.classList.toggle('active', pages[i] === page);
   });
-  // Clean up media and full play if leaving study
-  if (page !== 'study') {
-    stopAllMedia();
+  // Close any open review popups
+  var reviewPopup = document.getElementById('modal-review-popup');
+  if (reviewPopup) reviewPopup.style.display = 'none';
+  var reviewAllForgot = document.getElementById('modal-review-all-forgot');
+  if (reviewAllForgot) reviewAllForgot.classList.remove('show');
+  // On any page change: fully stop TTS/fullplay (not just pause)
+  // so navigating away and coming back starts fresh
+  _ttsUnknownReplaying = false;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch(e) {} }
+  if (fullPlayActive) {
+    clearInterval(fullPlayTimer);
+    if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
+    clearKaraokeTimers();
+    stopWordFlash();
+    fullPlayActive = false;
+    fullPlayPaused = false;
+    textFullPlayMode = false;
   }
+  // Remove TTS view if exists
+  var oldTtsView = document.getElementById('tts-only-view');
+  if (oldTtsView) oldTtsView.remove();
+  // Hide fullplay area
+  var fullplayEl = document.getElementById('study-fullplay');
+  if (fullplayEl) fullplayEl.style.display = 'none';
   // Hide video player on non-study pages
   var ytContainer = document.getElementById('yt-container');
   if (ytContainer) {
@@ -1804,9 +1933,39 @@ function beginStudy(sentences) {
   showStudySentence();
 }
 
+var studyReplayCount = 0;
+var _ttsUnknownReplaying = false;
+var studyRevealRatios = [0, 0.2, 0.5, 0.75, 1.0];
+var studyKaraokeRevealFrom = parseInt(localStorage.getItem('studyKaraokeRevealFrom') || '3');
+
+function renderMaskedKaraokeText(text, uid, revealRatio) {
+  var words = text.split(/\s+/).filter(function(w) { return w.length > 0; });
+  var total = words.length;
+  var revealCount = Math.round(total * revealRatio);
+  // Pick which indices to reveal (spread evenly)
+  var revealSet = new Set();
+  if (revealRatio >= 1) {
+    for (var i = 0; i < total; i++) revealSet.add(i);
+  } else if (revealCount > 0) {
+    for (var r = 0; r < revealCount; r++) {
+      var idx = Math.round(r * (total - 1) / (revealCount - 1 || 1));
+      revealSet.add(idx);
+    }
+  }
+  return words.map(function(word, i) {
+    if (revealSet.has(i)) {
+      return '<span class="karaoke-word" id="kw-' + uid + '-' + i + '">' + word + '</span>';
+    } else {
+      var dots = word.replace(/./g, '·');
+      return '<span class="karaoke-word" id="kw-' + uid + '-' + i + '" data-word="' + word.replace(/"/g, '&quot;') + '" style="color:var(--text3); opacity:0.3;">' + dots + '</span>';
+    }
+  }).join(' ');
+}
+
 function showStudySentence() {
   closeAIPopup();
   studyWordSelectMode = false;
+  studyReplayCount = 0; // Reset replay count for new sentence
   if (studyIndex >= studySentences.length) {
     finishStudy();
     return;
@@ -1817,8 +1976,8 @@ function showStudySentence() {
   document.getElementById('study-progress-bar').style.width = pct + '%';
   document.getElementById('study-meta').textContent = `문장 ${studyIndex + 1} / ${studySentences.length} | 단락 ${s.paragraph_idx + 1}`;
 
-  // Render karaoke text + 콩글리시
-  var sentHtml = renderKaraokeText(s.text, uid);
+  // Render masked karaoke text (0% revealed initially)
+  var sentHtml = renderMaskedKaraokeText(s.text, uid, 0);
   if (konglishEnabled) {
     sentHtml += '<div style="font-size:13px; color:var(--amber); margin-top:4px;">' + toKonglish(s.text) + '</div>';
   }
@@ -1856,7 +2015,15 @@ function replayStudySentence() {
   var s = studySentences[studyIndex];
   if (!s) return;
   var uid = 'study-' + s.id;
-  document.getElementById('study-sentence').innerHTML = renderKaraokeText(s.text, uid);
+  studyReplayCount++;
+  // Progressive reveal: 0→20%→50%→75%→100%
+  var ratio = studyReplayCount >= studyRevealRatios.length
+    ? 1.0 : studyRevealRatios[studyReplayCount];
+  var sentHtml = renderMaskedKaraokeText(s.text, uid, ratio);
+  if (konglishEnabled) {
+    sentHtml += '<div style="font-size:13px; color:var(--amber); margin-top:4px;">' + toKonglish(s.text) + '</div>';
+  }
+  document.getElementById('study-sentence').innerHTML = sentHtml;
   if (s.youtube_video_id && s.start_time && !window._embedBlocked) {
     playSentence(s.youtube_video_id, s.start_time || 0, s.end_time || 0);
     startKaraoke(uid, s.text, s.start_time || 0, s.end_time || 0);
@@ -1946,6 +2113,11 @@ function endStudy() {
 
 // ── Study: Full Video Play ────────────────────────────
 async function startFullVideoPlay(videoId) {
+  // Reset unknown sentences if setting is ON
+  if (fullplayResetUnknown) {
+    await api('/api/study/reset-unknown', { method: 'POST', body: { video_id: videoId } });
+  }
+
   var results = await Promise.all([
     api('/api/videos/' + videoId + '/info'),
     api('/api/videos/' + videoId + '/sentences')
@@ -1979,10 +2151,10 @@ async function startFullVideoPlay(videoId) {
   // Initialize emoji filter button
   var emojiBtn = document.getElementById('emoji-filter-btn');
   if (emojiFilterEnabled) {
-    emojiBtn.textContent = '🎵 OFF';
+    emojiBtn.textContent = '이모지 OFF';
     emojiBtn.classList.remove('active');
   } else {
-    emojiBtn.textContent = '🎵 ON';
+    emojiBtn.textContent = '이모지 ON';
     emojiBtn.classList.add('active');
   }
 
@@ -2014,16 +2186,27 @@ async function startFullVideoPlay(videoId) {
 
   // 임베딩 차단 안내 표시/숨김
   var embedBlocked = document.getElementById('fullplay-embed-blocked');
+  var stickyArea = document.getElementById('fullplay-sticky-area');
+  var startOverlay = document.getElementById('fullplay-start-overlay');
+  var fullplaySentencesEl = document.getElementById('fullplay-sentences');
   if (videoInfo.content_type === 'youtube_lyrics' && videoInfo.video_id) {
     embedBlocked.style.display = 'block';
+    // Hide fullplay controls, start overlay, sentences (user will use TTS view instead)
+    if (stickyArea) stickyArea.style.display = 'none';
+    if (startOverlay) startOverlay.style.display = 'none';
+    if (fullplaySentencesEl) fullplaySentencesEl.style.display = 'none';
     window._youtubePopupVideoId = videoInfo.video_id;
   } else {
     embedBlocked.style.display = 'none';
+    if (stickyArea) stickyArea.style.display = '';
+    if (fullplaySentencesEl) fullplaySentencesEl.style.display = '';
     window._youtubePopupVideoId = null;
   }
 
-  // 시작 버튼 바로 표시 (자동 재생 시도와 동시에)
-  document.getElementById('fullplay-start-overlay').style.display = 'block';
+  // 시작 버튼 바로 표시 (일반 영상만)
+  if (!(videoInfo.content_type === 'youtube_lyrics' && videoInfo.video_id)) {
+    startOverlay.style.display = 'block';
+  }
   fullPlayAutoStarted = false;
 
   if (isText) {
@@ -2216,6 +2399,11 @@ function startFullPlayTracking() {
         }
       }
       if (matchIdx !== fullPlayCurrentIdx && matchIdx >= 0) {
+        // Check if there are unknown sentences queued for replay
+        if (_fullplayUnknownQueue.length > 0) {
+          playFullplayUnknownQueue(matchIdx);
+          return; // stop tracking, will resume after queue is done
+        }
         highlightFullPlaySentence(matchIdx);
         fullPlayCurrentIdx = matchIdx;
       }
@@ -2227,6 +2415,44 @@ function startFullPlayTracking() {
     fullPlayRAF = requestAnimationFrame(trackLoop);
   }
   fullPlayRAF = requestAnimationFrame(trackLoop);
+}
+
+function playFullplayUnknownQueue(resumeMatchIdx) {
+  if (_fullplayUnknownQueue.length === 0) {
+    // Queue empty, resume normal playback
+    highlightFullPlaySentence(resumeMatchIdx);
+    fullPlayCurrentIdx = resumeMatchIdx;
+    startFullPlayTracking();
+    return;
+  }
+  // Pause video, play unknown sentence at configured speed
+  if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+  clearInterval(fullPlayTimer);
+  if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
+  stopWordFlash();
+
+  var item = _fullplayUnknownQueue.shift();
+  var s = item.sentence;
+
+  // Scroll to the unknown sentence
+  var el = document.getElementById('fullplay-s-' + item.idx);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  if (s.youtube_video_id && ytPlayer && ytPlayer.seekTo) {
+    if (ytPlayer.setPlaybackRate) ytPlayer.setPlaybackRate(replaySpeed);
+    ytPlayer.seekTo(s.start_time || 0, true);
+    ytPlayer.playVideo();
+    var duration = ((s.end_time || 0) - (s.start_time || 0)) * 1000;
+    var waitTime = (duration / replaySpeed) + 500;
+    setTimeout(function() {
+      if (ytPlayer && ytPlayer.setPlaybackRate) ytPlayer.setPlaybackRate(1);
+      // Play next in queue or resume
+      playFullplayUnknownQueue(resumeMatchIdx);
+    }, waitTime);
+  } else {
+    // No video, just resume
+    playFullplayUnknownQueue(resumeMatchIdx);
+  }
 }
 
 function highlightFullPlaySentence(idx) {
@@ -2290,36 +2516,18 @@ async function toggleFullplaySentenceUnknown(idx, event) {
   }
 }
 
-// Common function for R key and left click: mark unknown + replay at configured speed
+// Queue for unknown sentence replays in normal fullplay (YouTube)
+var _fullplayUnknownQueue = [];
+
+// Common function for R key and left click: mark unknown + queue replay after current sentence
 async function replayAsUnknown(idx) {
   const s = fullPlaySentences[idx];
   if (!s) return;
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
-  if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-  clearInterval(fullPlayTimer);
-  if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
-  stopWordFlash();
 
   await markFullplaySentence(idx, 'unknown');
 
-  if (textFullPlayMode) {
-    speakText(s.text);
-  } else if (s.youtube_video_id && ytPlayer && ytPlayer.seekTo) {
-    // Set replay speed (0.5x or 1x)
-    if (ytPlayer.setPlaybackRate) ytPlayer.setPlaybackRate(replaySpeed);
-    ytPlayer.seekTo(s.start_time || 0, true);
-    ytPlayer.playVideo();
-    var duration = ((s.end_time || 0) - (s.start_time || 0)) * 1000;
-    // Adjust wait time based on replay speed
-    var waitTime = (duration / replaySpeed) + 500;
-    setTimeout(function() {
-      // Restore normal speed and resume
-      if (ytPlayer && ytPlayer.setPlaybackRate) ytPlayer.setPlaybackRate(1);
-      startFullPlayTracking();
-    }, waitTime);
-  } else {
-    startFullPlayTracking();
-  }
+  // Queue the replay - it will play after the current sentence ends
+  _fullplayUnknownQueue.push({ idx: idx, sentence: s });
 }
 
 function setReplaySpeed(speed) {
@@ -2332,6 +2540,18 @@ function setReviewListenFirst(val) {
   reviewListenFirst = val;
   localStorage.setItem('reviewListenFirst', val);
   toast(val ? '듣기 먼저 모드 (Listening)' : '보기 먼저 모드 (Reading)');
+}
+
+function setFullplayReset(val) {
+  fullplayResetUnknown = val;
+  localStorage.setItem('fullplayResetUnknown', val);
+  toast(val ? '전체학습 시 모르는 문장 리셋 ON' : '전체학습 시 모르는 문장 리셋 OFF');
+}
+
+function setKaraokeRevealFrom(val) {
+  studyKaraokeRevealFrom = parseInt(val);
+  localStorage.setItem('studyKaraokeRevealFrom', val);
+  toast('카라오케 힌트: ' + val + '회부터 적용');
 }
 
 function setFontSize(size) {
@@ -2647,12 +2867,27 @@ function toggleEmojiFilter() {
   emojiFilterEnabled = !emojiFilterEnabled;
   localStorage.setItem('emojiFilterEnabled', emojiFilterEnabled);
   var btn = document.getElementById('emoji-filter-btn');
-  if (emojiFilterEnabled) {
-    btn.textContent = '🎵 OFF';
-    btn.classList.remove('active');
-  } else {
-    btn.textContent = '🎵 ON';
-    btn.classList.add('active');
+  if (btn) {
+    if (emojiFilterEnabled) { btn.textContent = '이모지 OFF'; btn.classList.remove('active'); }
+    else { btn.textContent = '이모지 ON'; btn.classList.add('active'); }
+  }
+}
+
+function toggleTTSEmojiFilter() {
+  emojiFilterEnabled = !emojiFilterEnabled;
+  localStorage.setItem('emojiFilterEnabled', emojiFilterEnabled);
+  var btn = document.getElementById('tts-emoji-filter-btn');
+  if (btn) {
+    if (emojiFilterEnabled) { btn.textContent = '이모지 OFF'; btn.classList.remove('active'); }
+    else { btn.textContent = '이모지 ON'; btn.classList.add('active'); }
+  }
+  // Update TTS sentence texts
+  var container = document.getElementById('tts-only-sentences');
+  if (container) {
+    fullPlaySentences.forEach(function(s, idx) {
+      var textEl = document.getElementById('tts-text-' + idx);
+      if (textEl) textEl.textContent = emojiFilterEnabled ? cleanTextForTTS(s.text) : s.text;
+    });
   }
 }
 
@@ -2932,6 +3167,14 @@ function onYouTubeEmbedBlocked(videoId) {
   var overlay = document.getElementById('fullplay-start-overlay');
   if (overlay) overlay.style.display = 'none';
 
+  // 단어 ON 버튼 + Word Flash 숨기기
+  var stickyArea = document.getElementById('fullplay-sticky-area');
+  if (stickyArea) stickyArea.style.display = 'none';
+
+  // 문장 목록 숨기기 (TTS 뷰에서 별도 표시)
+  var fullplaySentences = document.getElementById('fullplay-sentences');
+  if (fullplaySentences) fullplaySentences.style.display = 'none';
+
   // TTS 모드로 자동 전환 (임베딩 차단 시 TTS로 재생)
   textFullPlayMode = true;
 
@@ -3024,10 +3267,12 @@ function startTTSPlayForBlocked() {
     + '<span style="color:var(--text3);">학습하기 - 전체학습 (TTS)</span></div>';
 
   // 컨트롤 바
-  var controls = '<div style="display:flex;gap:0;align-items:center;justify-content:center;max-width:500px;margin:0 auto 16px;">'
-    + '<button class="btn btn-primary btn-sm" onclick="toggleTTSOnlyPause()" id="tts-only-pause-btn" style="flex:1;padding:10px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:6px 0 0 6px;">⏸ 일시정지</button>'
-    + '<button class="toggle-btn" onclick="toggleEmojiFilter()" id="emoji-filter-btn" style="flex:1;padding:10px 0;border-radius:0;">' + (emojiFilterEnabled ? '🎵 OFF' : '🎵 ON') + '</button>'
-    + '<button class="btn btn-red btn-sm" onclick="endTTSOnlyView()" style="flex:1;padding:10px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">⏹ 종료</button></div>';
+  var controls = '<div style="display:flex;gap:0;align-items:center;justify-content:center;max-width:600px;width:100%;margin:0 auto 8px;">'
+    + '<button class="btn btn-primary btn-sm" onclick="toggleTTSOnlyPause()" id="tts-only-pause-btn" style="flex:1;padding:10px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:6px 0 0 6px;">일시정지</button>'
+    + '<button class="toggle-btn" onclick="toggleTTSOnlyTranslation()" id="tts-only-trans-btn" style="flex:1;padding:10px 0;border-radius:0;text-align:center;justify-content:center;">' + (translationEnabled ? '해석 ON' : '해석 OFF') + '</button>'
+    + '<button class="toggle-btn" onclick="toggleTTSEmojiFilter()" id="tts-emoji-filter-btn" style="flex:1;padding:10px 0;border-radius:0;text-align:center;justify-content:center;">' + (emojiFilterEnabled ? '이모지 OFF' : '이모지 ON') + '</button>'
+    + '<button class="btn btn-red btn-sm" onclick="endTTSOnlyView()" style="flex:1;padding:10px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">종료</button></div>'
+    + '<div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:16px;">R=모르는문장 | Y=아는문장 | Space=일시정지</div>';
 
   // 문장 목록
   var sentHtml = '<div id="tts-only-sentences" style="max-height:calc(100vh - 200px);overflow-y:auto;padding:8px;">';
@@ -3041,13 +3286,17 @@ function startTTSPlayForBlocked() {
     var unknownClass = s.status === 'unknown' ? ' marked-unknown' : '';
     sentHtml += '<div class="fullplay-sentence' + unknownClass + '" id="tts-s-' + idx + '" onclick="toggleTTSSentenceUnknown(' + idx + ')" style="cursor:pointer;">'
       + '<span class="sentence-status-dot ' + s.status + '" id="tts-dot-' + idx + '" style="margin-top:6px;"></span>'
-      + '<span class="fullplay-text" id="tts-text-' + idx + '">' + s.text + '</span></div>';
+      + '<span class="fullplay-text" id="tts-text-' + idx + '">' + s.text + '</span></div>'
+      + '<div class="fullplay-translation" id="tts-trans-' + idx + '" style="display:' + (translationEnabled ? 'block' : 'none') + ';"></div>';
   });
   if (currentPara >= 0) sentHtml += '</div>';
   sentHtml += '</div>';
 
   ttsView.innerHTML = header + controls + sentHtml;
   document.getElementById('page-study').appendChild(ttsView);
+
+  // Load translations if enabled
+  if (translationEnabled) loadTTSOnlyTranslations();
 
   // 5. TTS 시작
   setTimeout(function() {
@@ -3153,6 +3402,15 @@ function resumeTTSOnlyPlay(startIdx) {
     utter.onend = function() {
       fallbackTimers.forEach(clearTimeout);
       if (textEl) textEl.textContent = fullPlaySentences[idx].text;
+      // Check if there are unknown sentences queued for replay
+      if (window._ttsUnknownQueue && window._ttsUnknownQueue.length > 0) {
+        var nextIdx = idx + 1;
+        playUnknownQueue(function() {
+          idx = nextIdx;
+          if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) setTimeout(speakNext, 300);
+        });
+        return;
+      }
       idx++;
       if (idx < fullPlaySentences.length && fullPlayActive && !fullPlayPaused) setTimeout(speakNext, 300);
     };
@@ -3177,6 +3435,59 @@ function resumeTTSOnlyPlay(startIdx) {
   speakNext();
 }
 
+function toggleTTSOnlyTranslation() {
+  var btn = document.getElementById('tts-only-trans-btn');
+  var isOn = btn.textContent.indexOf('ON') >= 0;
+  if (isOn) {
+    btn.textContent = '해석 OFF';
+    document.querySelectorAll('[id^="tts-trans-"]').forEach(function(el) { el.style.display = 'none'; });
+  } else {
+    btn.textContent = '해석 ON';
+    document.querySelectorAll('[id^="tts-trans-"]').forEach(function(el) { el.style.display = 'block'; });
+    loadTTSOnlyTranslations();
+  }
+}
+
+function loadTTSOnlyTranslations() {
+  fullPlaySentences.forEach(function(s, idx) {
+    var el = document.getElementById('tts-trans-' + idx);
+    if (el && !el.textContent) {
+      showTranslation(el, s.id);
+    }
+  });
+}
+
+function playUnknownQueue(onComplete) {
+  if (!window._ttsUnknownQueue || window._ttsUnknownQueue.length === 0) {
+    if (onComplete) onComplete();
+    return;
+  }
+  var item = window._ttsUnknownQueue.shift();
+  // Scroll to the unknown sentence
+  var sentContainer = document.getElementById('tts-only-sentences');
+  if (sentContainer && item.el) {
+    var containerRect = sentContainer.getBoundingClientRect();
+    var elRect = item.el.getBoundingClientRect();
+    sentContainer.scrollTop = elRect.top - containerRect.top + sentContainer.scrollTop - sentContainer.clientHeight / 3;
+  }
+  var voices = window.speechSynthesis.getVoices();
+  var utter = new SpeechSynthesisUtterance(item.text);
+  utter.lang = 'en-US';
+  utter.rate = replaySpeed; // Use configured replay speed
+  if (selectedVoiceName && voices.length) {
+    var voice = voices.find(function(v) { return v.name === selectedVoiceName; });
+    if (voice) utter.voice = voice;
+  }
+  utter.onend = function() {
+    // Play next in queue or complete
+    playUnknownQueue(onComplete);
+  };
+  utter.onerror = function() {
+    playUnknownQueue(onComplete);
+  };
+  window.speechSynthesis.speak(utter);
+}
+
 function toggleTTSOnlyPause() {
   fullPlayPaused = !fullPlayPaused;
   var btn = document.getElementById('tts-only-pause-btn');
@@ -3196,37 +3507,27 @@ async function toggleTTSSentenceUnknown(idx) {
   var dot = document.getElementById('tts-dot-' + idx);
   if (!el) return;
 
-  var isUnknown = el.classList.contains('marked-unknown');
-  var newStatus = isUnknown ? 'known' : 'unknown';
+  // Already marked unknown → do nothing
+  if (el.classList.contains('marked-unknown')) return;
+  var newStatus = 'unknown';
 
   // 서버에 상태 업데이트
   await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: newStatus } });
 
   // UI 업데이트
   s.status = newStatus;
-  if (newStatus === 'unknown') {
-    el.classList.add('marked-unknown');
-    if (dot) { dot.className = 'sentence-status-dot unknown'; }
-    toast('모르는 문장으로 표시', 'error');
-    // 모르는 문장 TTS 다시 재생
-    if (window.speechSynthesis && s.text) {
-      var text = cleanTextForTTS(s.text);
-      if (text) {
-        var voices = window.speechSynthesis.getVoices();
-        var utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'en-US';
-        utter.rate = 0.8;
-        if (selectedVoiceName && voices.length) {
-          var voice = voices.find(function(v) { return v.name === selectedVoiceName; });
-          if (voice) utter.voice = voice;
-        }
-        window.speechSynthesis.speak(utter);
-      }
+  el.classList.add('marked-unknown');
+  if (dot) { dot.className = 'sentence-status-dot unknown'; }
+  toast('모르는 문장으로 표시', 'error');
+
+  // Queue unknown sentence replay: after current sentence finishes, replay this one at configured speed
+  if (window.speechSynthesis && s.text) {
+    var text = cleanTextForTTS(s.text);
+    if (text) {
+      // Add to pending unknown replay queue
+      if (!window._ttsUnknownQueue) window._ttsUnknownQueue = [];
+      window._ttsUnknownQueue.push({ text: text, el: el, idx: idx });
     }
-  } else {
-    el.classList.remove('marked-unknown');
-    if (dot) { dot.className = 'sentence-status-dot known'; }
-    toast('아는 문장으로 표시');
   }
 }
 
@@ -3321,6 +3622,35 @@ function endFullPlayAndBack() {
 
 function endStudyAndBack() {
   endStudy();
+}
+
+function pauseFullPlayForNav() {
+  // Stop TTS
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  // Pause YouTube
+  if (ytPlayer && ytPlayer.pauseVideo) {
+    try { ytPlayer.pauseVideo(); } catch(e) {}
+  }
+  // Pause fullplay but preserve state for resume
+  if (fullPlayActive) {
+    clearInterval(fullPlayTimer);
+    if (fullPlayRAF) { cancelAnimationFrame(fullPlayRAF); fullPlayRAF = null; }
+    clearKaraokeTimers();
+    stopWordFlash();
+    fullPlayPaused = true;
+    // Update pause button (normal fullplay)
+    var pauseBtn = document.getElementById('fullplay-pause-btn');
+    if (pauseBtn) { pauseBtn.textContent = '재개'; pauseBtn.classList.remove('btn-primary'); pauseBtn.classList.add('btn-green'); }
+    // Update pause button (TTS view)
+    var ttsPauseBtn = document.getElementById('tts-only-pause-btn');
+    if (ttsPauseBtn) { ttsPauseBtn.textContent = '재개'; ttsPauseBtn.classList.remove('btn-primary'); ttsPauseBtn.classList.add('btn-green'); }
+  }
+  // Hide TTS view (preserve in DOM for resume)
+  var ttsView = document.getElementById('tts-only-view');
+  if (ttsView) ttsView.style.display = 'none';
+  // Hide YouTube container
+  var ytContainer = document.getElementById('yt-container');
+  if (ytContainer) ytContainer.style.display = 'none';
 }
 
 function stopAllMedia() {
@@ -3467,6 +3797,9 @@ function toggleReviewAllVoice() {
 function backToReviewModeSelect() {
   document.getElementById('review-all-list-area').style.display = 'none';
   document.getElementById('review-area').style.display = 'none';
+  // Reset individual review start screen
+  var startScreen = document.getElementById('review-start-screen');
+  if (startScreen) startScreen.style.display = 'none';
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   deleteSkipConfirm = false;
   document.getElementById('review-mode-select').style.display = 'block';
@@ -3780,8 +4113,29 @@ function startReviewIndividual() {
   const typeLabel = currentReviewType === 'word' ? '단어복습' : '문장복습';
   document.getElementById('review-individual-breadcrumb-text').textContent = typeLabel + ' - 개별학습';
 
+  // 시작 화면만 표시, 나머지 숨기기
+  document.getElementById('review-start-screen').style.display = 'block';
+  document.querySelectorAll('#review-area .review-running').forEach(function(el) { el.style.display = 'none'; });
+
+  // 시작 화면 정보
+  document.getElementById('review-start-title').textContent = typeLabel + ' 준비 완료';
+  document.getElementById('review-start-desc').textContent = '총 ' + reviewItems.length + '개 항목을 복습합니다.';
+
+  // YouTube 숨기기
+  var ytContainer = document.getElementById('yt-container');
+  if (ytContainer) ytContainer.style.display = 'none';
+
   reviewIndex = 0;
   reviewRevealed = false;
+}
+
+function beginReviewIndividual() {
+  // 시작 화면 숨기고 복습 UI 표시
+  document.getElementById('review-start-screen').style.display = 'none';
+  document.querySelectorAll('#review-area .review-running').forEach(function(el) {
+    el.style.display = el.id === 'review-layout' ? 'flex' : '';
+  });
+
   updateReviewVoiceBtn();
   showReviewItem();
 }
@@ -3818,6 +4172,12 @@ function endIndividualReview() {
 }
 
 function showReviewItem() {
+  // Ensure review UI is visible (start screen hidden, running elements shown)
+  var startScreen = document.getElementById('review-start-screen');
+  if (startScreen) startScreen.style.display = 'none';
+  document.querySelectorAll('#review-area .review-running').forEach(function(el) {
+    el.style.display = el.id === 'review-layout' ? 'flex' : '';
+  });
   // AI 패널 닫기
   closeAIPanel();
 
@@ -3866,24 +4226,40 @@ function showReviewItem() {
   transEl.textContent = '';
   transEl.style.display = 'none';
   document.getElementById('review-revealed').style.display = 'none';
-  document.getElementById('review-hidden').style.display = 'block';
+  document.getElementById('review-hidden').style.display = 'none';
+  document.getElementById('review-listen-buttons').style.display = 'none';
+  // Reset hint state
+  document.getElementById('review-hint-area').style.display = 'none';
+  document.getElementById('review-hint-chips').innerHTML = '';
+  var hintBtn = document.getElementById('review-hint-btn');
+  if (hintBtn) { hintBtn.disabled = false; hintBtn.style.opacity = ''; }
+
   document.getElementById('review-count-text').textContent =
     `${reviewIndex + 1} / ${reviewItems.length} 항목`;
   reviewRevealed = false;
+  reviewListeningPhase = false;
 
-  // 듣기 먼저 모드: YouTube 문장이면 소리를 먼저 자동 재생
-  if (reviewListenFirst && isYTItem && item.item_type === 'sentence' && item.start_time) {
-    document.getElementById('review-sentence').textContent = '👂 듣고 있습니다... (클릭하면 문장 확인)';
+  const isYTSentence = isYTItem && item.item_type === 'sentence' && item.start_time;
+
+  if (reviewListenFirst && isYTSentence) {
+    // 4-button listening phase
+    reviewListeningPhase = true;
+    document.getElementById('review-sentence').textContent = '👂 듣고 있습니다...';
+    document.getElementById('review-listen-buttons').style.display = 'block';
     if (!embedBlockedIds.has(item.youtube_video_id)) {
       forcePlayFromTo(item.youtube_video_id, item.start_time || 0, item.end_time || 0);
     } else {
       speakText(item.text, true);
     }
+  } else {
+    // Original flow
+    document.getElementById('review-hidden').style.display = 'block';
   }
 }
 
 function revealReview() {
   if (reviewRevealed) return;
+  if (reviewListeningPhase) return;
   reviewRevealed = true;
   const item = reviewItems[reviewIndex];
   const uid = 'rev-' + item.item_id;
@@ -3921,6 +4297,85 @@ function revealReview() {
   }
 }
 
+// ── Listening Phase Functions ──
+function replayReviewListening() {
+  var item = reviewItems[reviewIndex];
+  if (!item) return;
+  if (item.youtube_video_id && item.start_time && !embedBlockedIds.has(item.youtube_video_id)) {
+    forcePlayFromTo(item.youtube_video_id, item.start_time || 0, item.end_time || 0);
+  } else {
+    speakText(item.text, true);
+  }
+}
+
+function showListeningHint() {
+  var item = reviewItems[reviewIndex];
+  if (!item || !item.text) return;
+  // All words from the sentence
+  var sentWords = item.text.replace(/[^\w\s']/g, '').split(/\s+/).filter(function(w) { return w.length > 0; });
+  if (sentWords.length === 0) return;
+  var sentLower = new Set(sentWords.map(function(w) { return w.toLowerCase(); }));
+  // Same number of random words
+  var pool = COMMON_HINT_WORDS.filter(function(w) { return !sentLower.has(w); });
+  var randomWords = [];
+  for (var i = 0; i < sentWords.length && pool.length > 0; i++) {
+    var ri = Math.floor(Math.random() * pool.length);
+    randomWords.push(pool[ri]);
+    pool.splice(ri, 1);
+  }
+  // Combine and shuffle (Fisher-Yates)
+  var all = sentWords.map(function(w) { return { word: w, real: true }; })
+    .concat(randomWords.map(function(w) { return { word: w, real: false }; }));
+  for (var j = all.length - 1; j > 0; j--) {
+    var k = Math.floor(Math.random() * (j + 1));
+    var tmp = all[j]; all[j] = all[k]; all[k] = tmp;
+  }
+  document.getElementById('review-hint-chips').innerHTML = all.map(function(item, idx) {
+    return '<span class="hint-chip" data-real="' + item.real + '" data-idx="' + idx + '" onclick="toggleHintChip(this)" style="cursor:pointer;">' + item.word + '</span>';
+  }).join('');
+  document.getElementById('review-hint-area').style.display = 'block';
+  // Disable hint button (one-shot per item)
+  var hintBtn = document.getElementById('review-hint-btn');
+  if (hintBtn) { hintBtn.disabled = true; hintBtn.style.opacity = '0.4'; }
+}
+
+function toggleHintChip(el) {
+  var isReal = el.getAttribute('data-real') === 'true';
+  if (el.classList.contains('hint-selected') || el.classList.contains('hint-wrong')) return; // already toggled
+  if (isReal) {
+    el.classList.add('hint-selected');
+    el.style.opacity = '1';
+    el.style.color = '#38bdf8';
+    el.style.borderColor = '#38bdf8';
+    el.innerHTML = '⭕ ' + el.textContent;
+  } else {
+    el.classList.add('hint-wrong');
+    el.style.opacity = '0.6';
+    el.style.color = 'var(--red)';
+    el.style.borderColor = 'var(--red)';
+    el.innerHTML = '❌ ' + el.textContent;
+  }
+}
+
+function revealFromListening() {
+  reviewListeningPhase = false;
+  document.getElementById('review-listen-buttons').style.display = 'none';
+  revealReview();
+}
+
+async function reviewMarkPerfect() {
+  reviewListeningPhase = false;
+  var item = reviewItems[reviewIndex];
+  document.getElementById('review-listen-buttons').style.display = 'none';
+  var result = await api('/api/reviews/process', {
+    method: 'POST',
+    body: { item_id: item.item_id, item_type: item.item_type, correct: true }
+  });
+  toast('Level ' + result.level + '/7 - ' + (result.level >= 7 ? '완전 습득!' : '다음 복습: ' + result.level_name));
+  reviewIndex++;
+  showReviewItem();
+}
+
 function replayReviewItem() {
   var item = reviewItems[reviewIndex];
   if (!item) return;
@@ -3945,7 +4400,10 @@ let forgotSentenceText = '';
 
 let reviewPopupText = '';
 
-async function reviewMark(correct) {
+var _reviewClickBtn = null;
+
+async function reviewMark(correct, evt) {
+  if (evt) { _reviewClickBtn = evt.target.closest('.btn'); }
   const item = reviewItems[reviewIndex];
   const result = await api('/api/reviews/process', {
     method: 'POST',
@@ -4026,7 +4484,31 @@ async function reviewMark(correct) {
     aiArea.style.display = 'block';
   }
 
-  document.getElementById('modal-review-popup').classList.add('show');
+  var popup = document.getElementById('modal-review-popup');
+  var srcRect = _reviewClickBtn ? _reviewClickBtn.getBoundingClientRect() : null;
+  // Step 1: render popup at (0,0) to measure
+  popup.style.left = '0px';
+  popup.style.top = '0px';
+  popup.style.display = 'block';
+  // Step 2: after layout, measure confirm button and shift popup
+  requestAnimationFrame(function() { requestAnimationFrame(function() {
+    if (!srcRect) { return; }
+    var confirmBtn = popup.querySelector('[onclick="closeReviewPopup()"]');
+    if (!confirmBtn) return;
+    var cr = confirmBtn.getBoundingClientRect();
+    // Shift popup so confirm button center = source button center
+    var dx = (srcRect.left + srcRect.width / 2) - (cr.left + cr.width / 2);
+    var dy = (srcRect.top + srcRect.height / 2) - (cr.top + cr.height / 2);
+    var left = dx;
+    var top = dy;
+    var pw = popup.offsetWidth, ph = popup.offsetHeight;
+    if (left < 4) left = 4;
+    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+    if (top < 4) top = 4;
+    if (top + ph > window.innerHeight - 4) top = window.innerHeight - ph - 4;
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+  }); });
 
   // 음성 재생 (임베딩 차단 시 TTS 폴백)
   if (reviewVoiceEnabled) {
@@ -4095,7 +4577,7 @@ function closeReviewPopup() {
     if (unique.length > 0) toast(unique.join(', ') + ' → 모르는 단어 저장');
   }
 
-  document.getElementById('modal-review-popup').classList.remove('show');
+  document.getElementById('modal-review-popup').style.display = 'none';
   stopAllMedia();
   // reviewIndex는 reviewMark()에서 이미 증가됨 → 여기선 증가 안 함
   showReviewItem();
@@ -4692,6 +5174,14 @@ function loadShortcutSettings() {
       if (el) el.value = getKeyLabel(shortcutKeys[mode][action]);
     });
   });
+  // Karaoke reveal setting
+  document.querySelectorAll('input[name="karaoke-reveal"]').forEach(function(r) {
+    r.checked = parseInt(r.value) === studyKaraokeRevealFrom;
+  });
+  // Fullplay reset setting
+  document.querySelectorAll('input[name="fullplay-reset"]').forEach(function(r) {
+    r.checked = (r.value === 'on') === fullplayResetUnknown;
+  });
 }
 
 function captureKey(inputEl, mode, action) {
@@ -5132,7 +5622,7 @@ async function aiAction(action, context) {
 
   // 복습 모드: 팝업 열려있으면 팝업 내, 아니면 오른쪽 패널
   var isReview = (context === 'review');
-  var reviewPopupOpen = document.getElementById('modal-review-popup').classList.contains('show');
+  var reviewPopupOpen = document.getElementById('modal-review-popup').style.display !== 'none';
   if (isReview && reviewPopupOpen) {
     // 팝업 내 AI 결과 영역에 표시
     var popupResult = document.getElementById('review-popup-ai-result');
@@ -5613,11 +6103,7 @@ loadCategories().catch(function(e) { console.error('Categories init error:', e);
 
 // TTS init
 (function() {
-  var ttsBtn = document.getElementById('tts-toggle-btn');
-  if (ttsBtn) {
-    ttsBtn.textContent = ttsEnabled ? '음성 ON' : '음성 OFF';
-    ttsBtn.classList.toggle('on', ttsEnabled);
-  }
+  updateTTSUI();
   if (window.speechSynthesis) {
     loadVoices();
     speechSynthesis.onvoiceschanged = loadVoices;
