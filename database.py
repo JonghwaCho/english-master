@@ -132,6 +132,19 @@ def init_db():
         )
     """)
 
+    # 단어-영상 연결 테이블 (어떤 영상에서 단어를 저장했는지 추적)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS word_video_link (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            word_id INTEGER NOT NULL,
+            video_id INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(word_id, video_id),
+            FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE,
+            FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+        )
+    """)
+
     # AI 결과 캐싱 테이블 (직독직해, 유사문장, 문법, 단어설명)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS ai_cache (
@@ -371,9 +384,9 @@ def mark_sentence(sentence_id, status):
     log_study_activity(sentence_id, 'sentence', 'study', status == 'known')
 
 
-def get_unknown_sentences():
+def get_unknown_sentences(video_id=None):
     conn = get_conn()
-    rows = conn.execute("""
+    sql = """
         SELECT s.*, v.title as video_title, v.video_id as youtube_video_id, v.content_type,
                COALESCE(r.level, 0) as review_level,
                r.next_review
@@ -381,8 +394,13 @@ def get_unknown_sentences():
         JOIN videos v ON s.video_id = v.id
         LEFT JOIN reviews r ON r.item_id = s.id AND r.item_type = 'sentence'
         WHERE s.status='unknown'
-        ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC
-    """).fetchall()
+    """
+    params = []
+    if video_id:
+        sql += " AND s.video_id = ?"
+        params.append(video_id)
+    sql += " ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC"
+    rows = conn.execute(sql, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -461,17 +479,29 @@ def add_unknown_word(word):
     conn.close()
 
 
-def get_unknown_words():
+def get_unknown_words(video_id=None):
     conn = get_conn()
-    rows = conn.execute("""
-        SELECT w.*,
-               COALESCE(r.level, 0) as review_level,
-               r.next_review
-        FROM words w
-        LEFT JOIN reviews r ON r.item_id = w.id AND r.item_type = 'word'
-        WHERE w.status='unknown'
-        ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC
-    """).fetchall()
+    if video_id:
+        rows = conn.execute("""
+            SELECT DISTINCT w.*,
+                   COALESCE(r.level, 0) as review_level,
+                   r.next_review
+            FROM words w
+            JOIN word_video_link wl ON wl.word_id = w.id
+            LEFT JOIN reviews r ON r.item_id = w.id AND r.item_type = 'word'
+            WHERE w.status='unknown' AND wl.video_id = ?
+            ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC
+        """, [video_id]).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT w.*,
+                   COALESCE(r.level, 0) as review_level,
+                   r.next_review
+            FROM words w
+            LEFT JOIN reviews r ON r.item_id = w.id AND r.item_type = 'word'
+            WHERE w.status='unknown'
+            ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC
+        """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -534,26 +564,36 @@ def schedule_review(item_id, item_type, level=0):
     conn.close()
 
 
-def get_due_reviews(item_type=None):
+def get_due_reviews(item_type=None, video_id=None):
     now = datetime.now().isoformat()
     conn = get_conn()
     if item_type == "sentence":
-        rows = conn.execute("""
+        sql = """
             SELECT r.*, s.text, s.video_id, s.start_time, s.end_time,
                    v.title as video_title, v.video_id as youtube_video_id, v.content_type
             FROM reviews r
             JOIN sentences s ON r.item_id = s.id
             JOIN videos v ON s.video_id = v.id
             WHERE r.item_type='sentence' AND r.next_review <= ? AND r.level < 7
-            ORDER BY r.next_review
-        """, (now,)).fetchall()
+        """
+        params = [now]
+        if video_id:
+            sql += " AND s.video_id = ?"
+            params.append(video_id)
+        sql += " ORDER BY r.next_review"
+        rows = conn.execute(sql, params).fetchall()
     elif item_type == "word":
-        rows = conn.execute("""
+        sql = """
             SELECT r.*, w.word as text
             FROM reviews r JOIN words w ON r.item_id = w.id
             WHERE r.item_type='word' AND r.next_review <= ? AND r.level < 7
-            ORDER BY r.next_review
-        """, (now,)).fetchall()
+        """
+        params = [now]
+        if video_id:
+            sql += " AND w.id IN (SELECT wl.word_id FROM word_video_link wl WHERE wl.video_id = ?)"
+            params.append(video_id)
+        sql += " ORDER BY r.next_review"
+        rows = conn.execute(sql, params).fetchall()
     else:
         rows_s = conn.execute("""
             SELECT r.*, s.text, s.start_time, s.end_time,
@@ -623,30 +663,40 @@ def process_review(item_id, item_type, correct):
 
 # ── Statistics ──────────────────────────────────────────
 
-def get_stats():
+def get_stats(video_id=None):
     conn = get_conn()
-    total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences").fetchone()["c"]
-    known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known'").fetchone()["c"]
-    unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown'").fetchone()["c"]
-    mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered'").fetchone()["c"]
-    new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new'").fetchone()["c"]
-
-    total_words = conn.execute("SELECT COUNT(*) as c FROM words").fetchone()["c"]
-    known_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status IN ('known','mastered')").fetchone()["c"]
-    unknown_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown'").fetchone()["c"]
-
-    due_reviews = conn.execute(
-        "SELECT COUNT(*) as c FROM reviews WHERE next_review <= datetime('now') AND level < 7"
-    ).fetchone()["c"]
-
-    total_videos = conn.execute("SELECT COUNT(*) as c FROM videos").fetchone()["c"]
-
-    sentence_due = conn.execute(
-        "SELECT COUNT(*) as c FROM reviews WHERE item_type='sentence' AND next_review <= datetime('now') AND level < 7"
-    ).fetchone()["c"]
-    word_due = conn.execute(
-        "SELECT COUNT(*) as c FROM reviews WHERE item_type='word' AND next_review <= datetime('now') AND level < 7"
-    ).fetchone()["c"]
+    if video_id:
+        vf = " AND video_id = ?"
+        vp = [video_id]
+        total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE 1=1" + vf, vp).fetchone()["c"]
+        known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known'" + vf, vp).fetchone()["c"]
+        unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown'" + vf, vp).fetchone()["c"]
+        mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered'" + vf, vp).fetchone()["c"]
+        new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new'" + vf, vp).fetchone()["c"]
+        total_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE wl.video_id=?", vp).fetchone()["c"]
+        known_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE w.status IN ('known','mastered') AND wl.video_id=?", vp).fetchone()["c"]
+        unknown_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE w.status='unknown' AND wl.video_id=?", vp).fetchone()["c"]
+        due_reviews = conn.execute("""SELECT COUNT(*) as c FROM reviews r
+            JOIN sentences s ON r.item_id=s.id AND r.item_type='sentence'
+            WHERE r.next_review <= datetime('now') AND r.level < 7 AND s.video_id=?""", vp).fetchone()["c"]
+        sentence_due = due_reviews
+        word_due = conn.execute("""SELECT COUNT(*) as c FROM reviews r
+            JOIN word_video_link wl ON wl.word_id=r.item_id
+            WHERE r.item_type='word' AND r.next_review <= datetime('now') AND r.level < 7 AND wl.video_id=?""", vp).fetchone()["c"]
+        total_videos = 1
+    else:
+        total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences").fetchone()["c"]
+        known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known'").fetchone()["c"]
+        unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown'").fetchone()["c"]
+        mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered'").fetchone()["c"]
+        new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new'").fetchone()["c"]
+        total_words = conn.execute("SELECT COUNT(*) as c FROM words").fetchone()["c"]
+        known_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status IN ('known','mastered')").fetchone()["c"]
+        unknown_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown'").fetchone()["c"]
+        due_reviews = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE next_review <= datetime('now') AND level < 7").fetchone()["c"]
+        total_videos = conn.execute("SELECT COUNT(*) as c FROM videos").fetchone()["c"]
+        sentence_due = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE item_type='sentence' AND next_review <= datetime('now') AND level < 7").fetchone()["c"]
+        word_due = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE item_type='word' AND next_review <= datetime('now') AND level < 7").fetchone()["c"]
 
     conn.close()
     return {
@@ -682,24 +732,27 @@ def get_due_review_counts():
     return {"sentence_due": sentence_count, "word_due": word_count}
 
 
-def get_analytics():
-    """Returns analytics data for charts."""
+def get_analytics(video_id=None):
+    """Returns analytics data for charts. If video_id is given, filter by that content."""
     conn = get_conn()
+    vid_filter_s = " AND s.video_id = ?" if video_id else ""
+    vid_filter_s2 = " AND s.video_id = ?" if video_id else ""
+    vid_params = [video_id] if video_id else []
 
     # 1. Overall mastery distribution (donut chart)
-    mastered = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered'").fetchone()["c"]
-    known = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known'").fetchone()["c"]
+    mastered = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='mastered'" + vid_filter_s, vid_params).fetchone()["c"]
+    known = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='known'" + vid_filter_s, vid_params).fetchone()["c"]
     learning = conn.execute("""
         SELECT COUNT(*) as c FROM sentences s
         JOIN reviews r ON r.item_id = s.id AND r.item_type='sentence'
         WHERE s.status='unknown' AND r.level > 0
-    """).fetchone()["c"]
+    """ + vid_filter_s, vid_params).fetchone()["c"]
     frequently_wrong = conn.execute("""
         SELECT COUNT(*) as c FROM reviews r
         JOIN sentences s ON r.item_id = s.id AND r.item_type='sentence'
         WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND s.status='unknown'
-    """).fetchone()["c"]
-    total_unknown = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown'").fetchone()["c"]
+    """ + vid_filter_s2, vid_params).fetchone()["c"]
+    total_unknown = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='unknown'" + vid_filter_s, vid_params).fetchone()["c"]
     pure_unknown = max(0, total_unknown - learning - frequently_wrong)
 
     mastery_distribution = {
@@ -781,14 +834,26 @@ def get_analytics():
     srs_distribution = [srs_map[lv] for lv in sorted(srs_map.keys())]
 
     # 5. Word mastery distribution
-    word_mastered = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='mastered'").fetchone()["c"]
-    word_known = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='known'").fetchone()["c"]
-    word_unknown = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown'").fetchone()["c"]
-    word_freq_wrong = conn.execute("""
-        SELECT COUNT(*) as c FROM reviews r
-        JOIN words w ON r.item_id = w.id AND r.item_type='word'
-        WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown'
-    """).fetchone()["c"]
+    if video_id:
+        word_mastered = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM words w
+            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='mastered' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+        word_known = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM words w
+            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='known' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+        word_unknown = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM words w
+            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='unknown' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+        word_freq_wrong = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM reviews r
+            JOIN words w ON r.item_id = w.id AND r.item_type='word'
+            JOIN word_video_link wl ON wl.word_id = w.id
+            WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+    else:
+        word_mastered = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='mastered'").fetchone()["c"]
+        word_known = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='known'").fetchone()["c"]
+        word_unknown = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown'").fetchone()["c"]
+        word_freq_wrong = conn.execute("""
+            SELECT COUNT(*) as c FROM reviews r
+            JOIN words w ON r.item_id = w.id AND r.item_type='word'
+            WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown'
+        """).fetchone()["c"]
 
     word_distribution = {
         "mastered": word_mastered,

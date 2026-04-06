@@ -539,7 +539,8 @@ def api_mark_sentence():
 
 @app.route("/api/words/unknown", methods=["GET"])
 def api_get_unknown_words():
-    return jsonify(db.get_unknown_words())
+    video_id = request.args.get("video_id")
+    return jsonify(db.get_unknown_words(video_id=int(video_id) if video_id else None))
 
 
 @app.route("/api/words/known", methods=["GET"])
@@ -551,8 +552,21 @@ def api_get_known_words():
 def api_add_unknown_word():
     data = request.json
     word = data.get("word", "").strip()
+    video_id = data.get("video_id")
     if word:
         db.add_unknown_word(word)
+        # 단어-영상 연결 기록
+        if video_id:
+            try:
+                conn = db.get_conn()
+                word_row = conn.execute("SELECT id FROM words WHERE word=?", (word,)).fetchone()
+                if word_row:
+                    conn.execute("INSERT OR IGNORE INTO word_video_link (word_id, video_id) VALUES (?,?)",
+                                 (word_row["id"], int(video_id)))
+                    conn.commit()
+                conn.close()
+            except Exception:
+                pass
         # 백그라운드 큐에 추가 → 별도 스레드가 뜻을 조회하여 DB에 캐싱
         meaning_queue.put(word)
     return jsonify({"ok": True})
@@ -578,7 +592,8 @@ def api_delete_word(word_id):
 @app.route("/api/reviews")
 def api_get_reviews():
     item_type = request.args.get("type")
-    reviews = db.get_due_reviews(item_type)
+    video_id = request.args.get("video_id")
+    reviews = db.get_due_reviews(item_type, video_id=int(video_id) if video_id else None)
     for r in reviews:
         r["level_name"] = get_level_name(r.get("level", 0))
         r["next_review_text"] = format_next_review(r.get("next_review"))
@@ -618,24 +633,37 @@ def api_reviews_remaining():
 def api_reviews_all():
     """스케줄 무시 - 전체 리뷰 항목 반환 (level < 7)"""
     item_type = request.args.get("type", "sentence")
+    video_id = request.args.get("video_id")
     conn = db.get_conn()
     if item_type == "sentence":
-        rows = conn.execute("""
+        sql = """
             SELECT r.*, s.text, s.video_id, s.start_time, s.end_time,
                    v.title as video_title, v.video_id as youtube_video_id, v.content_type
             FROM reviews r
             JOIN sentences s ON r.item_id = s.id
             JOIN videos v ON s.video_id = v.id
             WHERE r.item_type='sentence' AND r.level < 7
-            ORDER BY r.next_review
-        """).fetchall()
+        """
+        params = []
+        if video_id:
+            sql += " AND s.video_id = ?"
+            params.append(int(video_id))
+        sql += " ORDER BY r.next_review"
+        rows = conn.execute(sql, params).fetchall()
     else:
-        rows = conn.execute("""
+        sql = """
             SELECT r.*, w.word as text
             FROM reviews r JOIN words w ON r.item_id = w.id
             WHERE r.item_type='word' AND r.level < 7
-            ORDER BY r.next_review
-        """).fetchall()
+        """
+        params = []
+        if video_id:
+            sql += """ AND w.id IN (
+                SELECT wl.word_id FROM word_video_link wl WHERE wl.video_id = ?
+            )"""
+            params.append(int(video_id))
+        sql += " ORDER BY r.next_review"
+        rows = conn.execute(sql, params).fetchall()
     conn.close()
     result = [dict(r) for r in rows]
     for r in result:
@@ -663,7 +691,8 @@ def api_delete_sentence(sentence_id):
 
 @app.route("/api/sentences/unknown")
 def api_unknown_sentences():
-    return jsonify(db.get_unknown_sentences())
+    video_id = request.args.get("video_id")
+    return jsonify(db.get_unknown_sentences(video_id=int(video_id) if video_id else None))
 
 
 @app.route("/api/sentences/known")
@@ -863,7 +892,34 @@ def api_add_file_content():
 
 @app.route("/api/stats")
 def api_stats():
-    return jsonify(db.get_stats())
+    video_id = request.args.get("video_id")
+    return jsonify(db.get_stats(video_id=int(video_id) if video_id else None))
+
+
+@app.route("/api/reviews/videos")
+def api_review_videos():
+    """복습 항목이 있는 콘텐츠(영상) 목록 반환"""
+    item_type = request.args.get("type", "sentence")
+    conn = db.get_conn()
+    if item_type == "sentence":
+        rows = conn.execute("""
+            SELECT DISTINCT v.id, v.title FROM reviews r
+            JOIN sentences s ON r.item_id = s.id
+            JOIN videos v ON s.video_id = v.id
+            WHERE r.item_type='sentence' AND r.level < 7
+            ORDER BY v.title
+        """).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT DISTINCT v.id, v.title FROM word_video_link wl
+            JOIN videos v ON wl.video_id = v.id
+            JOIN words w ON wl.word_id = w.id
+            JOIN reviews r ON r.item_id = w.id AND r.item_type='word'
+            WHERE r.level < 7
+            ORDER BY v.title
+        """).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/reviews/counts")
@@ -873,7 +929,8 @@ def api_review_counts():
 
 @app.route("/api/analytics")
 def api_analytics():
-    return jsonify(db.get_analytics())
+    video_id = request.args.get("video_id")
+    return jsonify(db.get_analytics(video_id=int(video_id) if video_id else None))
 
 
 # ── API: Playlists ──────────────────────────────────────

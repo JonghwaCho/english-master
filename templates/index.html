@@ -30,12 +30,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif; bac
 .nav-badge { margin-left: auto; background: var(--primary); color: white; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
 .nav-badge.red { background: var(--red); }
 .sidebar-footer { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
-.sidebar-toggles { padding: 8px 20px; display: flex; flex-direction: column; gap: 6px; }
+.sidebar-toggles { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); }
+.sidebar-toggles .toggle-label { font-size: 11px; color: var(--text3); margin-bottom: 2px; padding-left: 2px; }
 .sidebar-categories { padding: 8px 0; border-top: 1px solid var(--border); }
-.sidebar-categories .cat-header { padding: 8px 20px; font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; }
+.sidebar-categories .cat-header { padding: 10px 20px; font-size: 13px; color: var(--text2); font-weight: 600; letter-spacing: 0.3px; display: flex; justify-content: space-between; align-items: center; }
 .sidebar-categories .cat-header button { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; }
 .sidebar-categories .cat-header button:hover { color: var(--primary); }
-.cat-nav-item { padding: 8px 20px 8px 32px; cursor: pointer; font-size: 13px; color: var(--text2); transition: all 0.15s; display: flex; align-items: center; gap: 8px; }
+.cat-nav-item { padding: 10px 20px 10px 28px; cursor: pointer; font-size: 14px; color: var(--text2); transition: all 0.15s; display: flex; align-items: center; gap: 8px; }
 .cat-nav-item:hover { background: var(--bg3); color: var(--text); }
 .cat-nav-item.active { color: var(--primary); font-weight: 600; }
 
@@ -65,8 +66,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif; bac
 .btn-play:hover { color: var(--primary); border-color: var(--primary); }
 
 /* Toggle button styles */
-.toggle-btn { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text3); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-.toggle-btn.on { border-color: var(--green); color: var(--green); }
+.toggle-btn { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg3); color: var(--text3); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; }
+.toggle-btn:hover { border-color: var(--text2); background: var(--bg2); }
+.toggle-btn.on { border-color: var(--green); color: var(--green); background: rgba(34,197,94,0.08); }
+.toggle-btn .toggle-icon { font-size: 15px; }
 
 /* Input */
 input[type="text"], input[type="url"] {
@@ -302,10 +305,11 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     <div id="category-nav-list"></div>
   </div>
   <div class="sidebar-toggles" id="sidebar-video-controls">
-    <button class="toggle-btn" onclick="toggleVideo()" id="video-toggle-btn">영상 OFF</button>
-    <button class="toggle-btn" onclick="toggleTranslation()" id="trans-toggle-btn">해석 OFF</button>
-    <button class="toggle-btn on" onclick="toggleTTS()" id="tts-toggle-btn">음성 ON</button>
-    <select id="tts-voice-select" onchange="changeTTSVoice(this.value)" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;outline:none;">
+    <button class="toggle-btn" onclick="toggleVideo()" id="video-toggle-btn"><span>🎬 영상</span><span class="toggle-icon">OFF</span></button>
+    <button class="toggle-btn" onclick="toggleTranslation()" id="trans-toggle-btn"><span>📝 해석</span><span class="toggle-icon">OFF</span></button>
+    <button class="toggle-btn on" onclick="toggleTTS()" id="tts-toggle-btn"><span>🔊 음성</span><span class="toggle-icon">ON</span></button>
+    <div class="toggle-label">🎙 TTS 음성 선택</div>
+    <select id="tts-voice-select" onchange="changeTTSVoice(this.value)" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;outline:none;">
       <option value="">기본 음성</option>
     </select>
   </div>
@@ -508,7 +512,13 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     <h1 class="page-title" id="review-page-title">복습하기</h1>
     <!-- 공통 모드 선택기 (문장/단어 모두 사용) -->
     <div id="review-mode-select" style="display:none;">
-      <div style="display:flex; gap:16px; justify-content:center; margin:40px 0;">
+      <div style="text-align:center; margin:24px 0 16px;">
+        <label style="font-size:14px; color:var(--text2); margin-right:8px;">📂 콘텐츠 선택:</label>
+        <select id="review-content-filter" onchange="onReviewContentFilterChange()" style="padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; min-width:250px; outline:none;">
+          <option value="">전체 콘텐츠</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:16px; justify-content:center; margin:24px 0;">
         <div onclick="startReviewAll()" style="cursor:pointer; background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:32px 40px; text-align:center; flex:1; max-width:280px; transition:border-color 0.2s, box-shadow 0.2s;" onmouseover="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 16px rgba(99,102,241,0.15)'" onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
           <div style="font-size:36px; margin-bottom:12px;">📋</div>
           <div style="font-size:18px; font-weight:700; margin-bottom:8px;">전체 복습</div>
@@ -609,9 +619,12 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 
   <!-- Unknown Sentences -->
   <div class="page" id="page-unknown-sentences">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
       <h1 class="page-title" style="margin-bottom:0;">모르는 문장</h1>
       <div style="display:flex; gap:8px; align-items:center;">
+        <select id="unknown-sent-filter" onchange="loadUnknownSentences()" style="padding:6px 10px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; min-width:180px; outline:none;">
+          <option value="">전체 콘텐츠</option>
+        </select>
         <button class="btn btn-green" onclick="submitSentAll()" style="padding:8px 20px;font-size:14px;">💾 결과 저장</button>
       </div>
     </div>
@@ -624,48 +637,35 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 
   <!-- Unknown Words -->
   <div class="page" id="page-unknown-words">
-    <h1 class="page-title">모르는 단어</h1>
-    <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px; max-width:400px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+      <h1 class="page-title" style="margin-bottom:0;">모르는 단어</h1>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="unknown-word-filter" onchange="loadUnknownWords()" style="padding:6px 10px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; min-width:180px; outline:none;">
+          <option value="">전체 콘텐츠</option>
+        </select>
+        <button class="btn btn-green" onclick="submitWordAll()" style="padding:8px 20px;font-size:14px;">💾 결과 저장</button>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; max-width:400px;">
       <input type="text" id="add-word-input" placeholder="단어를 직접 추가..." onkeydown="if(event.key==='Enter')addWordManual()" style="flex:1;">
       <button class="btn btn-primary btn-sm" onclick="addWordManual()" style="white-space:nowrap; padding:8px 16px;">+ 추가</button>
     </div>
-    <!-- Mode toggle -->
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;" id="word-mode-bar">
-      <div style="display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
-        <button id="word-mode-all-btn" onclick="switchWordMode('all')" style="padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all 0.15s;">📋 전체학습</button>
-        <button id="word-mode-card-btn" onclick="switchWordMode('card')" style="padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; border:none; border-left:1px solid var(--border); transition:all 0.15s;">🃏 개별학습</button>
-      </div>
-      <span style="font-size:13px; color:var(--text3);" id="word-mode-count"></span>
-      <div style="margin-left:auto; display:flex; gap:8px;" id="word-mode-actions"></div>
+    <div style="margin-bottom:12px;">
+      <span style="font-size:13px; color:var(--text3);" id="unknown-word-count"></span>
     </div>
-    <!-- Mode: ALL at once (compact list) -->
-    <div id="bulk-word-study-all" style="display:none;">
-      <div id="bulk-all-word-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:6px;"></div>
-    </div>
-    <!-- Mode: Individual card -->
-    <div id="bulk-word-study" style="display:none;">
-      <div class="study-card">
-        <div class="study-progress"><div class="study-progress-bar" id="word-study-progress"></div></div>
-        <div class="study-meta" id="word-study-meta"></div>
-        <div class="study-sentence" id="word-study-word" style="font-size:32px; font-weight:700; justify-content:center; cursor:pointer;" onclick="revealWordMeaning()"></div>
-        <div class="study-translation" id="word-study-meaning" style="display:none;"></div>
-        <p style="color:var(--text3); font-size:12px; margin-top:8px;" id="word-study-hint">클릭하면 뜻이 보입니다</p>
-        <div class="study-buttons" id="word-study-buttons" style="margin-top:16px;">
-          <button class="btn btn-red" onclick="processWordStudy(false)">❌ 모르겠음</button>
-          <button class="btn btn-outline" onclick="revealWordMeaning()">👀 뜻 보기</button>
-          <button class="btn btn-green" onclick="processWordStudy(true)">✅ 알겠음</button>
-        </div>
-        <button class="btn" style="margin-top:16px; padding:10px 28px; font-size:15px; background:var(--bg2); border:1px solid var(--border); color:var(--text);" onclick="endBulkWordStudy()">🚪 학습 종료</button>
-      </div>
-    </div>
-    <!-- Default word list (hidden in study modes) -->
     <div id="unknown-words-list"></div>
   </div>
 
   <!-- Stats -->
   <div class="page" id="page-stats">
-    <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap;">
       <h1 style="font-size:24px; font-weight:700; margin:0;">학습 통계</h1>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="font-size:13px; color:var(--text2);">📂</label>
+        <select id="stats-content-filter" onchange="onStatsContentFilterChange()" style="padding:6px 10px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; min-width:200px; outline:none;">
+          <option value="">전체 콘텐츠</option>
+        </select>
+      </div>
       <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
         <span style="font-size:12px; color:var(--text3);">차트:</span>
         <input type="range" id="chart-size-slider" min="120" max="400" step="10" style="width:100px; accent-color:var(--primary);" oninput="updateChartSize(this.value)">
@@ -1105,11 +1105,11 @@ function updateVideoUI() {
   const btn2 = document.getElementById('unknown-video-toggle-btn');
   if (videoEnabled) {
     container.style.display = 'block';
-    if (btn) { btn.textContent = '영상 ON'; btn.classList.add('on'); }
+    if (btn) { btn.innerHTML = '<span>🎬 영상</span><span class="toggle-icon">ON</span>'; btn.classList.add('on'); }
     if (btn2) { btn2.textContent = '영상 ON'; btn2.classList.add('on'); }
   } else {
     container.style.display = 'none';
-    if (btn) { btn.textContent = '영상 OFF'; btn.classList.remove('on'); }
+    if (btn) { btn.innerHTML = '<span>🎬 영상</span><span class="toggle-icon">OFF</span>'; btn.classList.remove('on'); }
     if (btn2) { btn2.textContent = '영상 OFF'; btn2.classList.remove('on'); }
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
     clearTimeout(sentenceEndTimer);
@@ -1125,10 +1125,10 @@ function toggleTranslation() {
 function updateTranslationUI() {
   const btn = document.getElementById('trans-toggle-btn');
   if (translationEnabled) {
-    btn.textContent = '해석 ON';
+    btn.innerHTML = '<span>📝 해석</span><span class="toggle-icon">ON</span>';
     btn.classList.add('on');
   } else {
-    btn.textContent = '해석 OFF';
+    btn.innerHTML = '<span>📝 해석</span><span class="toggle-icon">OFF</span>';
     btn.classList.remove('on');
   }
   document.querySelectorAll('.translation-text').forEach(el => {
@@ -1140,7 +1140,7 @@ function toggleTTS() {
   ttsEnabled = !ttsEnabled;
   localStorage.setItem('ttsEnabled', ttsEnabled);
   var btn = document.getElementById('tts-toggle-btn');
-  btn.textContent = ttsEnabled ? '음성 ON' : '음성 OFF';
+  btn.innerHTML = ttsEnabled ? '<span>🔊 음성</span><span class="toggle-icon">ON</span>' : '<span>🔇 음성</span><span class="toggle-icon">OFF</span>';
   btn.classList.toggle('on', ttsEnabled);
   if (!ttsEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
 }
@@ -1909,7 +1909,7 @@ async function studyMark(status) {
 async function saveWordChip(el) {
   if (el.classList.contains('selected')) return; // already saved
   el.classList.add('selected');
-  await api('/api/words/add', { method: 'POST', body: { word: el.textContent } });
+  await api('/api/words/add', { method: 'POST', body: { word: el.textContent, video_id: studyCurrentVideoId } });
   toast('"' + el.textContent + '" 저장됨');
 }
 
@@ -2882,7 +2882,7 @@ async function saveWordFlashWords() {
 
   const savedEl = document.getElementById('word-flash-saved');
   for (const word of unique) {
-    await api('/api/words/add', { method: 'POST', body: { word } });
+    await api('/api/words/add', { method: 'POST', body: { word, video_id: studyCurrentVideoId } });
   }
   if (savedEl) {
     savedEl.textContent = unique.join(', ') + ' 저장됨';
@@ -3383,12 +3383,35 @@ async function forceReviewAll() {
   }
 }
 
+var reviewSelectedVideoId = '';
+
 async function loadReview(type) {
   currentReviewType = type || 'sentence';
   deleteSkipConfirm = false;
+  reviewSelectedVideoId = '';
   var titleEl = document.getElementById('review-page-title');
   if (titleEl) titleEl.textContent = currentReviewType === 'word' ? '단어 복습' : '문장 복습';
-  reviewItems = await api('/api/reviews?type=' + currentReviewType);
+
+  // 콘텐츠 필터 드롭다운 로드
+  var filterEl = document.getElementById('review-content-filter');
+  try {
+    var videos = await api('/api/reviews/videos?type=' + currentReviewType);
+    filterEl.innerHTML = '<option value="">전체 콘텐츠</option>' +
+      videos.map(function(v) {
+        var shortTitle = v.title && v.title.length > 40 ? v.title.substring(0, 37) + '...' : (v.title || 'Untitled');
+        return '<option value="' + v.id + '">' + shortTitle + '</option>';
+      }).join('');
+  } catch(e) {
+    filterEl.innerHTML = '<option value="">전체 콘텐츠</option>';
+  }
+
+  await loadReviewItems();
+}
+
+async function loadReviewItems() {
+  var url = '/api/reviews?type=' + currentReviewType;
+  if (reviewSelectedVideoId) url += '&video_id=' + reviewSelectedVideoId;
+  reviewItems = await api(url);
   registerEmbedBlockedFromData(reviewItems);
   reviewIndex = 0;
   reviewRevealed = false;
@@ -3402,6 +3425,7 @@ async function loadReview(type) {
 
   if (!reviewItems.length) {
     document.getElementById('review-empty').style.display = 'block';
+    document.getElementById('review-mode-select').style.display = 'block';
     return;
   }
 
@@ -3409,6 +3433,12 @@ async function loadReview(type) {
   const typeLabel = currentReviewType === 'word' ? '단어' : '문장';
   document.getElementById('review-mode-count-info').textContent = `복습할 ${typeLabel}: ${reviewItems.length}개`;
   document.getElementById('review-mode-select').style.display = 'block';
+}
+
+async function onReviewContentFilterChange() {
+  var filterEl = document.getElementById('review-content-filter');
+  reviewSelectedVideoId = filterEl.value;
+  await loadReviewItems();
 }
 
 // ── 전체 복습 (문장/단어 공통) ──
@@ -3607,7 +3637,7 @@ function closeReviewAllForgotPopup() {
     chips.forEach(function(c) { wordsToSave.push(c.textContent.trim().toLowerCase()); });
     var unique = [...new Set(wordsToSave)];
     unique.forEach(function(w) {
-      api('/api/words/add', { method: 'POST', body: { word: w } });
+      api('/api/words/add', { method: 'POST', body: { word: w, video_id: studyCurrentVideoId } });
     });
     if (unique.length > 0) toast(unique.join(', ') + ' → 모르는 단어 저장');
   }
@@ -4060,7 +4090,7 @@ function closeReviewPopup() {
     chips.forEach(function(c) { wordsToSave.push(c.textContent.trim().toLowerCase()); });
     var unique = [...new Set(wordsToSave)];
     unique.forEach(function(w) {
-      api('/api/words/add', { method: 'POST', body: { word: w } });
+      api('/api/words/add', { method: 'POST', body: { word: w, video_id: studyCurrentVideoId } });
     });
     if (unique.length > 0) toast(unique.join(', ') + ' → 모르는 단어 저장');
   }
@@ -4076,14 +4106,28 @@ function closeReviewPopup() {
 let unknownSentencesData = [];
 
 async function loadUnknownSentences() {
-  unknownSentencesData = await api('/api/sentences/unknown');
-  // youtube_lyrics 영상의 videoId를 자동으로 임베딩 차단 목록에 추가
+  // Load content filter
+  var filterEl = document.getElementById('unknown-sent-filter');
+  if (filterEl && !filterEl._loaded) {
+    try {
+      var videos = await api('/api/videos');
+      var opts = '<option value="">전체 콘텐츠</option>';
+      videos.forEach(function(v) {
+        var t = v.title && v.title.length > 30 ? v.title.substring(0, 27) + '...' : (v.title || 'Untitled');
+        opts += '<option value="' + v.id + '">' + t + '</option>';
+      });
+      filterEl.innerHTML = opts;
+      filterEl._loaded = true;
+    } catch(e) {}
+  }
+  var vidParam = filterEl && filterEl.value ? '?video_id=' + filterEl.value : '';
+  unknownSentencesData = await api('/api/sentences/unknown' + vidParam);
   registerEmbedBlockedFromData(unknownSentencesData);
   const listEl = document.getElementById('sent-all-list');
   const countEl = document.getElementById('sent-all-count');
   if (!unknownSentencesData.length) {
     if (countEl) countEl.textContent = '';
-    listEl.innerHTML = '<div class="empty"><div class="empty-icon">&#128170;</div><h3>모르는 문장이 없습니다!</h3><p>모든 문장을 알고 있거나 아직 학습을 시작하지 않았습니다.</p></div>';
+    listEl.innerHTML = '<div class="empty"><div class="empty-icon">&#128170;</div><h3>모르는 문장이 없습니다!</h3></div>';
     return;
   }
   renderSentAllList();
@@ -4256,22 +4300,49 @@ let bulkWordIdx = 0;
 let bulkWordActive = false;
 
 async function loadUnknownWords() {
-  unknownWordsData = await api('/api/words/unknown');
-  const el = document.getElementById('unknown-words-list');
+  // Load content filter
+  var filterEl = document.getElementById('unknown-word-filter');
+  if (filterEl && !filterEl._loaded) {
+    try {
+      var videos = await api('/api/videos');
+      var opts = '<option value="">전체 콘텐츠</option>';
+      videos.forEach(function(v) {
+        var t = v.title && v.title.length > 30 ? v.title.substring(0, 27) + '...' : (v.title || 'Untitled');
+        opts += '<option value="' + v.id + '">' + t + '</option>';
+      });
+      filterEl.innerHTML = opts;
+      filterEl._loaded = true;
+    } catch(e) {}
+  }
+  var vidParam = filterEl && filterEl.value ? '?video_id=' + filterEl.value : '';
+  unknownWordsData = await api('/api/words/unknown' + vidParam);
+  var countEl = document.getElementById('unknown-word-count');
+  var listEl = document.getElementById('unknown-words-list');
   if (!unknownWordsData.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">&#128218;</div><h3>모르는 단어가 없습니다!</h3></div>';
-    el.style.display = '';
-    document.getElementById('bulk-word-study-all').style.display = 'none';
-    document.getElementById('bulk-word-study').style.display = 'none';
-    document.getElementById('word-mode-count').textContent = '';
-    document.getElementById('word-mode-actions').innerHTML = '';
+    if (countEl) countEl.textContent = '';
+    listEl.innerHTML = '<div class="empty"><div class="empty-icon">&#128218;</div><h3>모르는 단어가 없습니다!</h3></div>';
     return;
   }
-  renderWordMode();
+  if (countEl) countEl.textContent = unknownWordsData.length + '개 단어';
+  renderWordList();
 }
 
-let currentWordMode = localStorage.getItem('wordMode') || 'all';
 let bulkAllSelections = {};
+
+function renderWordList() {
+  bulkAllSelections = {};
+  var listEl = document.getElementById('unknown-words-list');
+  listEl.innerHTML = unknownWordsData.map(function(w, i) {
+    var btnStyle = 'padding:2px 6px;border:none;border-radius:4px;cursor:pointer;font-size:11px;line-height:1;';
+    return '<div id="bulk-row-' + i + '" style="display:flex;align-items:center;gap:4px;padding:5px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;transition:all 0.15s;">'
+      + '<span style="flex:1;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + w.word + '">' + w.word + '</span>'
+      + '<button onclick="event.stopPropagation();deleteBulkWord(' + i + ')" title="삭제" style="' + btnStyle + 'background:transparent;color:var(--text3);font-size:13px;">🗑</button>'
+      + '<button id="bulk-know-' + i + '" onclick="event.stopPropagation();markBulkWord(' + i + ',true)" title="안다" style="' + btnStyle + 'background:transparent;color:var(--green);">✅</button>'
+      + '<button id="bulk-unkn-' + i + '" onclick="event.stopPropagation();markBulkWord(' + i + ',false)" title="모른다" style="' + btnStyle + 'background:transparent;color:var(--red);">❌</button>'
+      + '</div>';
+  }).join('');
+  preloadWordMeanings(unknownWordsData.map(function(w) { return w.word; }));
+}
 
 function switchWordMode(mode) {
   currentWordMode = mode;
@@ -4371,10 +4442,30 @@ async function deleteBulkWord(idx) {
   try {
     await api('/api/words/' + w.id, { method: 'DELETE' });
     unknownWordsData.splice(idx, 1);
-    document.getElementById('word-mode-count').textContent = unknownWordsData.length + '개 단어';
-    renderBulkAllList();
+    var countEl = document.getElementById('unknown-word-count');
+    if (countEl) countEl.textContent = unknownWordsData.length + '개 단어';
+    renderWordList();
     toast(w.word + ' 삭제됨');
   } catch(e) { toast('삭제 실패', 'error'); }
+}
+
+async function submitWordAll() {
+  const indices = Object.keys(bulkAllSelections);
+  if (!indices.length) {
+    toast('체크한 단어가 없습니다', 'error');
+    return;
+  }
+  let knownCount = 0, unknownCount = 0;
+  for (const idx of indices) {
+    const w = unknownWordsData[parseInt(idx)];
+    const correct = bulkAllSelections[idx] === true;
+    await api('/api/reviews/process', { method: 'POST', body: { item_id: w.id, item_type: 'word', correct } });
+    if (correct) knownCount++; else unknownCount++;
+  }
+  toast('저장! ✅안다: ' + knownCount + '개, ❌모른다: ' + unknownCount + '개');
+  bulkAllSelections = {};
+  loadUnknownWords();
+  loadDashboard();
 }
 
 async function preloadWordMeanings(words) {
@@ -4555,7 +4646,7 @@ async function addWordManual() {
   const input = document.getElementById('add-word-input');
   const word = input.value.trim();
   if (!word) return;
-  await api('/api/words/add', { method: 'POST', body: { word } });
+  await api('/api/words/add', { method: 'POST', body: { word, video_id: studyCurrentVideoId } });
   input.value = '';
   toast(`"${word}" 추가됨`);
   loadUnknownWords();
@@ -5360,8 +5451,31 @@ function updateChartSize(val) {
   });
 }
 
+var statsSelectedVideoId = '';
+
+function onStatsContentFilterChange() {
+  statsSelectedVideoId = document.getElementById('stats-content-filter').value;
+  document.getElementById('stats-content-filter')._loaded = true; // don't reload dropdown
+  loadStats();
+}
+
 async function loadStats() {
-  var results = await Promise.all([api('/api/stats'), api('/api/analytics')]);
+  // Load content filter dropdown
+  var filterEl = document.getElementById('stats-content-filter');
+  if (filterEl && !filterEl._loaded) {
+    try {
+      var videos = await api('/api/videos');
+      filterEl.innerHTML = '<option value="">전체 콘텐츠</option>' +
+        videos.map(function(v) {
+          var t = v.title && v.title.length > 35 ? v.title.substring(0, 32) + '...' : (v.title || 'Untitled');
+          return '<option value="' + v.id + '">' + t + '</option>';
+        }).join('');
+      filterEl._loaded = true;
+      if (statsSelectedVideoId) filterEl.value = statsSelectedVideoId;
+    } catch(e) {}
+  }
+  var vidParam = statsSelectedVideoId ? '?video_id=' + statsSelectedVideoId : '';
+  var results = await Promise.all([api('/api/stats' + vidParam), api('/api/analytics' + vidParam)]);
   var stats = results[0];
   var analytics = results[1];
   if (typeof Chart === 'undefined') { console.warn('Chart.js not loaded yet'); return; }
@@ -5388,8 +5502,8 @@ async function loadStats() {
   // 도넛 차트 공통 옵션 (범례 한 줄 강제)
   var donutLegendOpts = {
     position: 'bottom',
-    labels: { color: chartColors.text, font: { size: 9 }, boxWidth: 8, padding: 4 },
-    maxHeight: 20
+    labels: { color: chartColors.text, font: { size: 13 }, boxWidth: 12, padding: 10 },
+    maxHeight: 36
   };
 
   // 1) Mastery Donut
@@ -5435,10 +5549,10 @@ async function loadStats() {
       ]
     },
     options: {
-      plugins: { legend: { labels: { color: chartColors.text, font: { size: 10 } } } },
+      plugins: { legend: { labels: { color: chartColors.text, font: { size: 13 } } } },
       scales: {
-        x: { ticks: { color: chartColors.text, font: { size: 9 } }, grid: { color: chartColors.grid } },
-        y: { ticks: { color: chartColors.text, font: { size: 9 } }, grid: { color: chartColors.grid }, beginAtZero: true }
+        x: { ticks: { color: chartColors.text, font: { size: 12 } }, grid: { color: chartColors.grid } },
+        y: { ticks: { color: chartColors.text, font: { size: 12 } }, grid: { color: chartColors.grid }, beginAtZero: true }
       },
       responsive: true, maintainAspectRatio: true
     }
@@ -5458,10 +5572,10 @@ async function loadStats() {
       ]
     },
     options: {
-      plugins: { legend: { labels: { color: chartColors.text, font: { size: 10 } } } },
+      plugins: { legend: { labels: { color: chartColors.text, font: { size: 13 } } } },
       scales: {
-        x: { stacked: true, ticks: { color: chartColors.text, font: { size: 9 } }, grid: { color: chartColors.grid } },
-        y: { stacked: true, ticks: { color: chartColors.text, font: { size: 9 } }, grid: { color: chartColors.grid }, beginAtZero: true }
+        x: { stacked: true, ticks: { color: chartColors.text, font: { size: 12 } }, grid: { color: chartColors.grid } },
+        y: { stacked: true, ticks: { color: chartColors.text, font: { size: 12 } }, grid: { color: chartColors.grid }, beginAtZero: true }
       },
       responsive: true, maintainAspectRatio: true
     }
