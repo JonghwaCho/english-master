@@ -1,5 +1,8 @@
-# Database
-data/
+# Database (dev only)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 
 # Python
 __pycache__/
@@ -9,6 +12,11 @@ __pycache__/
 dist/
 build/
 *.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # macOS
 .DS_Store
@@ -16,7 +24,18 @@ build/
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Environment
 .env
+.venv/
 venv/
+env/
+
+# Logs
+*.log
+logs/
+
+# Claude
+.claude/settings.local.json
