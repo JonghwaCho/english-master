@@ -60,6 +60,10 @@ JWT_SECRET=another-32+-character-random-string-for-jwt
 DATABASE_URL=sqlite:///data/english_master_v2.db
 ```
 
+> 💡 `DATABASE_URL`이 상대 경로(`sqlite:///data/...`)여도 `config.py`의 validator가
+> 자동으로 프로젝트 루트 기준 절대 경로로 변환합니다. Flask 디버그 모드에서 CWD가
+> 바뀌어도 안전하게 동작합니다.
+
 ### 3. 데이터베이스 초기화
 ```bash
 # 스키마 생성

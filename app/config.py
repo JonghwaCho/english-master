@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +45,27 @@ class Settings(BaseSettings):
     database_url: str = Field(default=f"sqlite:///{BASE_DIR / 'data' / 'english_master_v2.db'}")
     sqlalchemy_echo: bool = False
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_sqlite_path(cls, v: str) -> str:
+        """Convert relative SQLite paths to absolute (relative to BASE_DIR).
+
+        Flask debug mode changes CWD on reload, which breaks relative paths.
+        This validator ensures `sqlite:///data/foo.db` always resolves to
+        `sqlite:////<project>/data/foo.db`.
+        """
+        prefix = "sqlite:///"
+        if not v.startswith(prefix):
+            return v  # not SQLite, leave alone
+        path_part = v[len(prefix):]
+        # Already absolute (starts with /) → fine
+        if path_part.startswith("/"):
+            return v
+        # Relative → resolve against BASE_DIR
+        abs_path = (BASE_DIR / path_part).resolve()
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{abs_path}"
+
     # ── Redis (Celery broker + rate limiter cache) ────
     redis_url: str = "redis://127.0.0.1:6379/0"
     celery_broker_url: str = "redis://127.0.0.1:6379/1"
@@ -59,12 +80,12 @@ class Settings(BaseSettings):
     # ── OAuth: Google ─────────────────────────────────
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_redirect_uri: str = "http://127.0.0.1:5294/auth/google/callback"
+    google_redirect_uri: str = "http://127.0.0.1:5294/api/auth/oauth/google/callback"
 
     # ── OAuth: Kakao ──────────────────────────────────
     kakao_client_id: str = ""
     kakao_client_secret: str = ""
-    kakao_redirect_uri: str = "http://127.0.0.1:5294/auth/kakao/callback"
+    kakao_redirect_uri: str = "http://127.0.0.1:5294/api/auth/oauth/kakao/callback"
 
     # ── AI Providers (server-side keys, operator-managed) ──
     ai_provider_default: Literal["gemini", "claude", "openai"] = "gemini"
