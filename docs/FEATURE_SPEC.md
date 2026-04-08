@@ -87,10 +87,24 @@
   4. 재생 완료 → 다음 문장부터 TTS 흐름 자동 재개
 - **동시성 보호**: `_ttsUnknownReplaying` 플래그로 중복 실행 방지
 
-### F-2.4 전체학습 리셋
+### F-2.4 전체학습 시각적 리셋 (Visual-Only Reset)
 - **설정**: 전체학습 시 모르는 문장 리셋 ON/OFF (기본: ON)
-- **동작**: ON일 때 `startFullVideoPlay()` 호출 시 API `/api/study/reset-unknown` 호출
-- **처리**: 해당 비디오의 unknown 문장 → new로 변경 + reviews 삭제
+- **동작**: ON일 때 `startFullVideoPlay()` 호출 시 `window._fullplayVisualReset = true` 플래그 설정
+- **처리**:
+  - **DB는 변경되지 않음** (`reset_unknown_sentences()`는 deprecated no-op)
+  - 전체학습 화면 렌더링 시 `_fullplayVisualReset`가 true이면 `marked-unknown` 클래스를 추가하지 않음
+  - 상태 점(dot)도 'new'로 표시
+- **결과**: 전체학습 화면에서는 깨끗하게 시작하지만, "모르는 문장" 페이지에는 그대로 유지됨
+
+### F-2.4.1 모르는 문장 누적 카운트 (unknown_count)
+- **DB 컬럼**: `sentences.unknown_count INTEGER DEFAULT 0`
+- **마이그레이션**: 기존 unknown 상태 문장은 1로 초기화
+- **증가 시점**: `mark_sentence(id, 'unknown')` 호출 시 `unknown_count += 1`
+- **세션 중복 방지**: `markFullplaySentence()` / `toggleTTSSentenceUnknown()`에서 `marked-unknown` 클래스로 세션 내 중복 클릭 차단 (DB는 세션당 1회만 증가)
+- **표시**:
+  - 토스트: "모르는 문장으로 저장됨 (N회)"
+  - 모르는 문장 페이지: `❌ N회` 배지 (색상 강도: 1-2회/3-4회/5회+)
+- **정렬**: `get_unknown_sentences()`에서 `unknown_count DESC`로 자주 틀린 문장 우선 정렬
 
 ### F-2.5 메뉴 이동 시 미디어 정리
 - **트리거**: 사이드바 메뉴 클릭 (모든 페이지 전환)
@@ -324,8 +338,9 @@ process_review(item_id, item_type, correct):
 |------|------|----------|
 | v1.0 | 2026-04-06 | 초기 릴리즈 - 콘텐츠 필터, 간소화 UI, 사이드바 개편 |
 | v1.1 | 2026-04-07 | 반응형 UI, 글래스모피즘, 리스닝 모드, 점진적 단어 노출, 전체학습 큐 재생 |
+| v1.1.1 | 2026-04-08 | 모르는 문장 시각적 리셋 + unknown_count 누적 카운트 |
 
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-04-07*
+*최종 업데이트: 2026-04-08*

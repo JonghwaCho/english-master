@@ -2164,10 +2164,9 @@ function endStudy() {
 
 // ── Study: Full Video Play ────────────────────────────
 async function startFullVideoPlay(videoId) {
-  // Reset unknown sentences if setting is ON
-  if (fullplayResetUnknown) {
-    await api('/api/study/reset-unknown', { method: 'POST', body: { video_id: videoId } });
-  }
+  // Visual-only reset for unknown sentences (data is preserved in DB)
+  // This only affects the fullplay screen display - "모르는 문장" page still shows them
+  window._fullplayVisualReset = !!fullplayResetUnknown;
 
   var results = await Promise.all([
     api('/api/videos/' + videoId + '/info'),
@@ -2217,13 +2216,15 @@ async function startFullVideoPlay(videoId) {
       currentPara = s.paragraph_idx;
       html += '<div class="paragraph-group"><div class="paragraph-label">Paragraph ' + (currentPara + 1) + '</div>';
     }
-    var unknownClass = s.status === 'unknown' ? ' marked-unknown' : '';
+    // Visual reset: hide unknown styling on the fullplay screen (data preserved)
+    var unknownClass = (s.status === 'unknown' && !window._fullplayVisualReset) ? ' marked-unknown' : '';
+    var dotStatus = (s.status === 'unknown' && window._fullplayVisualReset) ? 'new' : s.status;
     var timeLabel = s.start_time ? formatTime(s.start_time) : '';
     var konglishHtml = konglishEnabled ? '<div style="font-size:11px; color:var(--amber); margin-top:1px; margin-left:28px;">' + toKonglish(s.text) + '</div>' : '';
     html += `
       <div class="fullplay-sentence${unknownClass}" id="fullplay-s-${idx}" onclick="toggleFullplaySentenceUnknown(${idx}, event)">
         <span class="fullplay-time">${timeLabel}</span>
-        <span class="sentence-status-dot ${s.status}" style="margin-top:6px;" id="fullplay-dot-${idx}"></span>
+        <span class="sentence-status-dot ${dotStatus}" style="margin-top:6px;" id="fullplay-dot-${idx}"></span>
         <span class="fullplay-text" id="fullplay-text-${idx}">${s.text}</span>
       </div>
       ${konglishHtml}
@@ -2839,9 +2840,11 @@ async function markFullplaySentence(idx, targetStatus) {
   const transEl = document.getElementById(`fullplay-trans-${idx}`);
 
   if (targetStatus === 'unknown') {
-    if (s.status === 'unknown') return; // already unknown
+    // Session-level dedup: already marked in THIS session → do nothing
+    if (el && el.classList.contains('marked-unknown')) return;
     await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'unknown' } });
     s.status = 'unknown';
+    s.unknown_count = (s.unknown_count || 0) + 1;
     el.classList.add('marked-unknown');
     if (dot) { dot.className = 'sentence-status-dot unknown'; dot.setAttribute('style', 'margin-top:6px;'); }
     // Show translation only when translation mode is ON
@@ -2854,7 +2857,7 @@ async function markFullplaySentence(idx, targetStatus) {
         transEl.dataset.loaded = 'true';
       }
     }
-    toast('모르는 문장으로 저장됨', 'error');
+    toast('모르는 문장으로 저장됨 (' + s.unknown_count + '회)', 'error');
   } else if (targetStatus === 'known') {
     if (s.status === 'known') return; // already known
     await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: 'known' } });
@@ -3334,9 +3337,11 @@ function startTTSPlayForBlocked() {
       currentPara = s.paragraph_idx;
       sentHtml += '<div class="paragraph-group"><div class="paragraph-label">Paragraph ' + (currentPara + 1) + '</div>';
     }
-    var unknownClass = s.status === 'unknown' ? ' marked-unknown' : '';
+    // Visual reset: hide unknown styling on the TTS fullplay screen (data preserved)
+    var unknownClass = (s.status === 'unknown' && !window._fullplayVisualReset) ? ' marked-unknown' : '';
+    var dotStatus = (s.status === 'unknown' && window._fullplayVisualReset) ? 'new' : s.status;
     sentHtml += '<div class="fullplay-sentence' + unknownClass + '" id="tts-s-' + idx + '" onclick="toggleTTSSentenceUnknown(' + idx + ')" style="cursor:pointer;">'
-      + '<span class="sentence-status-dot ' + s.status + '" id="tts-dot-' + idx + '" style="margin-top:6px;"></span>'
+      + '<span class="sentence-status-dot ' + dotStatus + '" id="tts-dot-' + idx + '" style="margin-top:6px;"></span>'
       + '<span class="fullplay-text" id="tts-text-' + idx + '">' + s.text + '</span></div>'
       + '<div class="fullplay-translation" id="tts-trans-' + idx + '" style="display:' + (translationEnabled ? 'block' : 'none') + ';"></div>';
   });
@@ -3558,18 +3563,19 @@ async function toggleTTSSentenceUnknown(idx) {
   var dot = document.getElementById('tts-dot-' + idx);
   if (!el) return;
 
-  // Already marked unknown → do nothing
+  // Already marked in THIS session → do nothing (prevent double-click)
   if (el.classList.contains('marked-unknown')) return;
   var newStatus = 'unknown';
 
-  // 서버에 상태 업데이트
+  // 서버에 상태 업데이트 (unknown_count 증가됨)
   await api('/api/study/mark', { method: 'POST', body: { sentence_id: s.id, status: newStatus } });
 
   // UI 업데이트
   s.status = newStatus;
+  s.unknown_count = (s.unknown_count || 0) + 1;
   el.classList.add('marked-unknown');
   if (dot) { dot.className = 'sentence-status-dot unknown'; }
-  toast('모르는 문장으로 표시', 'error');
+  toast('모르는 문장으로 표시 (' + s.unknown_count + '회)', 'error');
 
   // Queue unknown sentence replay: after current sentence finishes, replay this one at configured speed
   if (window.speechSynthesis && s.text) {
@@ -4684,11 +4690,17 @@ function renderSentAllList() {
     listEl.innerHTML = '<div class="empty"><div class="empty-icon">💪</div><h3>모르는 문장이 없습니다!</h3></div>';
     return;
   }
-  listEl.innerHTML = unknownSentencesData.map((s, i) => `
+  listEl.innerHTML = unknownSentencesData.map((s, i) => {
+    var count = s.unknown_count || 1;
+    // Badge intensity based on count: more misses = stronger color
+    var badgeColor = count >= 5 ? '#dc2626' : (count >= 3 ? '#ef4444' : '#f87171');
+    var badgeBg = count >= 5 ? 'rgba(220,38,38,0.25)' : (count >= 3 ? 'rgba(239,68,68,0.18)' : 'rgba(248,113,113,0.12)');
+    var countBadge = '<span style="display:inline-block; padding:2px 8px; border-radius:10px; background:' + badgeBg + '; color:' + badgeColor + '; font-size:10px; font-weight:700; margin-right:6px; border:1px solid ' + badgeColor + ';">❌ ' + count + '회</span>';
+    return `
     <div class="sent-all-row" id="sent-all-item-${i}" onclick="playSentAllItem(${i})" style="cursor:pointer;">
       <span style="font-size:14px;flex-shrink:0;">🔊</span>
       <div style="flex:1; min-width:0;">
-        <div style="font-size:13px; font-weight:500;">${s.text}</div>
+        <div style="font-size:13px; font-weight:500;">${countBadge}${s.text}</div>
         ${konglishEnabled ? '<div style="font-size:11px; color:var(--amber); margin-top:2px;">' + toKonglish(s.text) + '</div>' : ''}
         <div style="font-size:11px; color:var(--text3);">${s.video_title || ''}</div>
         <div id="sent-all-trans-${s.id}" style="display:none; font-size:12px; color:var(--amber); margin-top:2px;"></div>
@@ -4698,7 +4710,8 @@ function renderSentAllList() {
         <button id="sent-forgot-${i}" onclick="event.stopPropagation();selectSentAll(${i}, false)" style="padding:5px 16px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red); font-size:12px; cursor:pointer; white-space:nowrap;">❌ 모름</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   // 해석 표시
   if (translationEnabled) {

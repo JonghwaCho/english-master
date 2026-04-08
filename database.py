@@ -170,6 +170,14 @@ def init_db():
         """)
         conn.commit()
 
+    # sentences 테이블에 unknown_count 컬럼 추가 (없을 경우)
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(sentences)").fetchall()]
+    if "unknown_count" not in cols:
+        conn.execute("ALTER TABLE sentences ADD COLUMN unknown_count INTEGER DEFAULT 0")
+        # 기존 unknown 상태 문장들은 최소 1로 초기화
+        conn.execute("UPDATE sentences SET unknown_count = 1 WHERE status = 'unknown' AND unknown_count = 0")
+        conn.commit()
+
     conn.commit()
     conn.close()
 
@@ -375,9 +383,16 @@ def get_paragraphs_for_study(video_id):
 
 
 def mark_sentence(sentence_id, status):
-    """status: 'known' or 'unknown'"""
+    """status: 'known' or 'unknown'
+    When marked as 'unknown', also increment unknown_count to track repeated failures."""
     conn = get_conn()
-    conn.execute("UPDATE sentences SET status=? WHERE id=?", (status, sentence_id))
+    if status == 'unknown':
+        conn.execute(
+            "UPDATE sentences SET status=?, unknown_count = COALESCE(unknown_count, 0) + 1 WHERE id=?",
+            (status, sentence_id)
+        )
+    else:
+        conn.execute("UPDATE sentences SET status=? WHERE id=?", (status, sentence_id))
     conn.commit()
     conn.close()
     # 학습 활동 로그 기록
@@ -385,25 +400,13 @@ def mark_sentence(sentence_id, status):
 
 
 def reset_unknown_sentences(video_id):
-    """Reset all unknown sentences for a video: status back to 'new', review level to 0"""
-    conn = get_conn()
-    # Get sentence IDs that are unknown for this video
-    rows = conn.execute(
-        "SELECT id FROM sentences WHERE video_id=? AND status='unknown'", (video_id,)
-    ).fetchall()
-    if rows:
-        ids = [r['id'] for r in rows]
-        # Reset sentence status to 'new'
-        conn.execute(
-            f"UPDATE sentences SET status='new' WHERE id IN ({','.join('?' * len(ids))})", ids
-        )
-        # Reset review level to 0 for these sentences
-        for sid in ids:
-            conn.execute(
-                "DELETE FROM reviews WHERE item_id=? AND item_type='sentence'", (sid,)
-            )
-        conn.commit()
-    conn.close()
+    """DEPRECATED: No-op.
+    Previously reset unknown sentences to 'new' and deleted their reviews,
+    but this caused unknown sentences to disappear from the "모르는 문장" page.
+    The UI now resets the visual 'marked-unknown' state on the fullplay screen only,
+    while preserving the underlying data and unknown_count history.
+    """
+    return
 
 
 def get_unknown_sentences(video_id=None):
@@ -421,7 +424,8 @@ def get_unknown_sentences(video_id=None):
     if video_id:
         sql += " AND s.video_id = ?"
         params.append(video_id)
-    sql += " ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC"
+    # Sort: frequently-missed first (high unknown_count), then by review level/next_review
+    sql += " ORDER BY COALESCE(s.unknown_count, 0) DESC, COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC"
     rows = conn.execute(sql, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]

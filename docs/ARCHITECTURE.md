@@ -125,7 +125,7 @@ english-master/
 | 테이블 | 역할 | 주요 컬럼 |
 |--------|------|----------|
 | videos | 콘텐츠(영상/텍스트) 메타데이터 | url, video_id, title, content_type |
-| sentences | 개별 문장 데이터 | text, status, start_time, end_time, translation |
+| sentences | 개별 문장 데이터 | text, status, start_time, end_time, translation, unknown_count |
 | words | 학습 단어 | word, status |
 | reviews | SRS 복습 스케줄 | item_id, item_type, level, next_review |
 | categories | 콘텐츠 분류 | name |
@@ -263,4 +263,4 @@ backdrop-filter: blur(12px)
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-04-07*
+*최종 업데이트: 2026-04-08*
