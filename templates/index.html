@@ -402,6 +402,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
   </div>
   <div class="sidebar-footer">
     <div id="user-info" style="margin-bottom:8px; color:var(--text2); font-size:12px; word-break:break-all;"></div>
+    <a id="admin-link" href="/admin" style="display:none; margin-bottom:8px; padding:8px; background:var(--bg); border:1px solid var(--primary); border-radius:8px; color:var(--primary); font-size:12px; text-align:center; text-decoration:none;">🛠 관리자</a>
     <button onclick="logout()" style="width:100%; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text3); font-size:12px; cursor:pointer;">로그아웃</button>
     <div style="margin-top:10px;">Ebbinghaus Spaced Repetition</div>
   </div>
@@ -6188,6 +6189,10 @@ fetch('/api/auth/me')
     if (u) {
       var el = document.getElementById('user-info');
       if (el) el.textContent = '👤 ' + (u.name || u.email);
+      if (u.is_admin) {
+        var adminLink = document.getElementById('admin-link');
+        if (adminLink) adminLink.style.display = 'block';
+      }
     }
   })
   .catch(function() {});

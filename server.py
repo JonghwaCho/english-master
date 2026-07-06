@@ -31,6 +31,9 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
+# 관리자 이메일 (콤마 구분). 미설정 시 첫 사용자(id=1, 소유자)가 관리자.
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+
 
 # ── 인증 게이트 ─────────────────────────────────────────
 # 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
@@ -60,6 +63,15 @@ def _clear_user(exc=None):
 def current_user():
     uid = session.get("user_id")
     return db.get_user_by_id(uid) if uid else None
+
+
+def is_admin(user):
+    """관리자 여부. ADMIN_EMAILS가 설정돼 있으면 그 목록, 아니면 첫 사용자(id=1)."""
+    if not user:
+        return False
+    if ADMIN_EMAILS:
+        return (user.get("email") or "").lower() in ADMIN_EMAILS
+    return user.get("id") == 1
 
 # ── 단어 뜻 번역 백그라운드 큐 ──────────────────────────
 meaning_queue = Queue()
@@ -355,7 +367,10 @@ def api_me():
     user = current_user()
     if not user:
         return jsonify({"error": "unauthorized"}), 401
-    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
+    return jsonify({
+        "id": user["id"], "email": user["email"], "name": user["name"],
+        "is_admin": is_admin(user),
+    })
 
 
 # ── 구글 OAuth 로그인 ────────────────────────────────────
@@ -448,6 +463,38 @@ def api_google_callback():
 
     session["user_id"] = user["id"]
     return redirect("/")
+
+
+# ── Admin (운영 도구) ────────────────────────────────────
+
+def _require_admin():
+    """관리자가 아니면 (응답, 상태코드) 반환, 관리자면 None."""
+    if not is_admin(current_user()):
+        return jsonify({"error": "forbidden"}), 403
+    return None
+
+
+@app.route("/admin")
+def admin_page():
+    if not is_admin(current_user()):
+        return redirect("/")
+    return render_template("admin.html")
+
+
+@app.route("/api/admin/users", methods=["GET"])
+def api_admin_users():
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(db.admin_list_users())
+
+
+@app.route("/api/admin/stats", methods=["GET"])
+def api_admin_stats():
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(db.admin_global_stats())
 
 
 # ── API: Categories ────────────────────────────────────

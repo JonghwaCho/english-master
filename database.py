@@ -1224,3 +1224,46 @@ def get_playlist_video_ids(pl_id):
     ).fetchall()
     conn.close()
     return {r["youtube_video_id"] for r in rows}
+
+
+# ── Admin (운영 도구) ────────────────────────────────────
+# 주의: 아래 함수들은 의도적으로 _uid() 필터를 쓰지 않고 전체 사용자를 조회한다.
+# 반드시 서버 측 is_admin 검증을 거친 라우트에서만 호출할 것.
+
+def admin_list_users():
+    """전체 사용자 목록 + 사용자별 데이터량. 민감정보(비번 해시/AI키)는 제외."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT u.id, u.email, u.name, u.created_at,
+               (u.google_id IS NOT NULL) AS has_google,
+               (u.ai_key IS NOT NULL AND u.ai_key != '') AS has_ai_key,
+               (SELECT COUNT(*) FROM videos    WHERE user_id=u.id) AS videos,
+               (SELECT COUNT(*) FROM sentences WHERE user_id=u.id) AS sentences,
+               (SELECT COUNT(*) FROM words     WHERE user_id=u.id) AS words,
+               (SELECT COUNT(*) FROM reviews   WHERE user_id=u.id) AS reviews,
+               (SELECT MAX(created_at) FROM study_log WHERE user_id=u.id) AS last_active
+        FROM users u
+        ORDER BY u.created_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def admin_global_stats():
+    """서비스 전체 요약 통계."""
+    conn = get_conn()
+    def one(q):
+        return conn.execute(q).fetchone()[0]
+    stats = {
+        "total_users": one("SELECT COUNT(*) FROM users"),
+        "users_with_google": one("SELECT COUNT(*) FROM users WHERE google_id IS NOT NULL"),
+        "users_with_ai_key": one("SELECT COUNT(*) FROM users WHERE ai_key IS NOT NULL AND ai_key != ''"),
+        "total_videos": one("SELECT COUNT(*) FROM videos"),
+        "total_sentences": one("SELECT COUNT(*) FROM sentences"),
+        "total_words": one("SELECT COUNT(*) FROM words"),
+        "total_reviews": one("SELECT COUNT(*) FROM reviews"),
+        "new_users_7d": one("SELECT COUNT(*) FROM users WHERE created_at >= datetime('now','-7 days')"),
+        "active_users_7d": one("SELECT COUNT(DISTINCT user_id) FROM study_log WHERE created_at >= datetime('now','-7 days')"),
+    }
+    conn.close()
+    return stats

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>English Master · 관리자</title>
+  <style>
+    :root {
+      --bg: #0f0f1a; --bg2: #16162a; --text: #e2e8f0; --muted: #94a3b8; --text3: #64748b;
+      --primary: #6366f1; --purple: #a78bfa; --green: #22c55e; --cyan: #22d3ee; --amber: #f59e0b;
+      --border: #334155; --card: rgba(30, 27, 60, 0.5);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh; padding: 28px;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 22px; font-weight: 800; }
+    h1 span { background: linear-gradient(90deg, var(--primary), var(--purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .back { color: var(--muted); text-decoration: none; font-size: 14px; border: 1px solid var(--border); padding: 8px 14px; border-radius: 9px; }
+    .back:hover { color: var(--text); border-color: var(--primary); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 28px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
+      backdrop-filter: blur(10px);
+    }
+    .card .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .card .value { font-size: 26px; font-weight: 800; }
+    .card .value.accent { color: var(--cyan); }
+    .section-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--bg2); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 780px; }
+    th, td { padding: 11px 14px; text-align: left; white-space: nowrap; }
+    thead th { background: rgba(99,102,241,0.12); color: var(--muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; }
+    tbody tr { border-top: 1px solid var(--border); }
+    tbody tr:hover { background: rgba(99,102,241,0.06); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+    .badge.g { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge.k { background: rgba(34,211,238,0.15); color: var(--cyan); }
+    .badge.off { background: rgba(100,116,139,0.15); color: var(--text3); }
+    .email { font-weight: 600; }
+    .muted { color: var(--text3); }
+    .loading { color: var(--muted); padding: 40px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1><span>English Master</span> 관리자</h1>
+      <a href="/" class="back">← 앱으로</a>
+    </div>
+
+    <div class="cards" id="stat-cards">
+      <div class="loading">불러오는 중...</div>
+    </div>
+
+    <div class="section-title">사용자 (<span id="user-count">0</span>명)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>이메일</th><th>이름</th><th>가입일</th><th>로그인</th>
+            <th class="num">영상</th><th class="num">문장</th><th class="num">단어</th><th class="num">복습</th>
+            <th>최근 활동</th>
+          </tr>
+        </thead>
+        <tbody id="user-rows">
+          <tr><td colspan="9" class="loading">불러오는 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function fmtDate(s) {
+      if (!s) return '<span class="muted">—</span>';
+      return s.substring(0, 10);
+    }
+
+    async function load() {
+      try {
+        const [stats, users] = await Promise.all([
+          fetch('/api/admin/stats').then(r => r.json()),
+          fetch('/api/admin/users').then(r => r.json()),
+        ]);
+        renderStats(stats);
+        renderUsers(users);
+      } catch (e) {
+        document.getElementById('user-rows').innerHTML =
+          '<tr><td colspan="9" class="loading">불러오기 실패 (관리자 권한이 없을 수 있습니다)</td></tr>';
+      }
+    }
+
+    function card(label, value, accent) {
+      return '<div class="card"><div class="label">' + label + '</div>' +
+             '<div class="value' + (accent ? ' accent' : '') + '">' + value + '</div></div>';
+    }
+
+    function renderStats(s) {
+      document.getElementById('stat-cards').innerHTML =
+        card('전체 사용자', s.total_users) +
+        card('최근 7일 신규', s.new_users_7d, true) +
+        card('최근 7일 활성', s.active_users_7d, true) +
+        card('구글 연동', s.users_with_google) +
+        card('개인 AI키', s.users_with_ai_key) +
+        card('총 영상', s.total_videos) +
+        card('총 문장', s.total_sentences) +
+        card('총 복습', s.total_reviews);
+    }
+
+    function renderUsers(users) {
+      document.getElementById('user-count').textContent = users.length;
+      if (!users.length) {
+        document.getElementById('user-rows').innerHTML =
+          '<tr><td colspan="9" class="loading">사용자가 없습니다</td></tr>';
+        return;
+      }
+      document.getElementById('user-rows').innerHTML = users.map(function(u) {
+        var login = u.has_google
+          ? '<span class="badge g">Google</span>'
+          : '<span class="badge k">이메일</span>';
+        var ai = u.has_ai_key ? ' <span class="badge k">AI키</span>' : '';
+        return '<tr>' +
+          '<td class="email">' + (u.email || '') + '</td>' +
+          '<td>' + (u.name || '<span class="muted">—</span>') + '</td>' +
+          '<td>' + fmtDate(u.created_at) + '</td>' +
+          '<td>' + login + ai + '</td>' +
+          '<td class="num">' + u.videos + '</td>' +
+          '<td class="num">' + u.sentences + '</td>' +
+          '<td class="num">' + u.words + '</td>' +
+          '<td class="num">' + u.reviews + '</td>' +
+          '<td>' + fmtDate(u.last_active) + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    load();
+  </script>
+</body>
+</html>
