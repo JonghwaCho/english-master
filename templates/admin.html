@@ -44,6 +44,35 @@
     .email { font-weight: 600; }
     .muted { color: var(--text3); }
     .loading { color: var(--muted); padding: 40px; text-align: center; }
+
+    /* 요금제 관리 */
+    .plans-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 10px; }
+    .plan-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+    .plan-card .pname { font-size: 15px; font-weight: 800; margin-bottom: 2px; }
+    .plan-card .pcode { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
+    .plan-card .ptype { font-size: 11px; color: var(--purple); margin-top: 2px; }
+    .field { margin-top: 12px; }
+    .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .field .row { display: flex; align-items: center; gap: 6px; }
+    input.inp, select.inp {
+      width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; font-size: 14px; font-variant-numeric: tabular-nums;
+    }
+    input.inp:focus, select.inp:focus { outline: none; border-color: var(--primary); }
+    .field .row .suffix { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .btn {
+      background: var(--primary); color: #fff; border: none; border-radius: 8px;
+      padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn.sm { padding: 5px 10px; font-size: 12px; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .plan-card .btn { width: 100%; margin-top: 14px; }
+    .saved-tick { color: var(--green); font-size: 12px; margin-left: 6px; }
+    .usage-pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px;
+      background: rgba(99,102,241,0.15); color: var(--purple); font-variant-numeric: tabular-nums; }
+    .usage-pill.full { background: rgba(245,158,11,0.18); color: var(--amber); }
+    select.plan-select { width: auto; min-width: 96px; padding: 5px 8px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -57,18 +86,28 @@
       <div class="loading">불러오는 중...</div>
     </div>
 
+    <div class="section-title">요금제 관리</div>
+    <div class="plans-grid" id="plans-grid">
+      <div class="loading">불러오는 중...</div>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:28px;">
+      가격(원/월)과 콘텐츠 한도(주기당 등록 허용 수)를 수정하고 저장하면 즉시 반영됩니다.
+      free는 평생 누적, 나머지는 구독 시작일 기준 매월 리셋됩니다.
+    </p>
+
     <div class="section-title">사용자 (<span id="user-count">0</span>명)</div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>이메일</th><th>이름</th><th>가입일</th><th>로그인</th>
+            <th>요금제</th><th class="num">사용량</th>
             <th class="num">영상</th><th class="num">문장</th><th class="num">단어</th><th class="num">복습</th>
             <th>최근 활동</th>
           </tr>
         </thead>
         <tbody id="user-rows">
-          <tr><td colspan="9" class="loading">불러오는 중...</td></tr>
+          <tr><td colspan="11" class="loading">불러오는 중...</td></tr>
         </tbody>
       </table>
     </div>
@@ -80,18 +119,107 @@
       return s.substring(0, 10);
     }
 
+    var PLANS = [];
+
     async function load() {
       try {
-        const [stats, users] = await Promise.all([
+        const [stats, users, plans] = await Promise.all([
           fetch('/api/admin/stats').then(r => r.json()),
           fetch('/api/admin/users').then(r => r.json()),
+          fetch('/api/admin/plans').then(r => r.json()),
         ]);
+        PLANS = plans;
         renderStats(stats);
+        renderPlans(plans);
         renderUsers(users);
       } catch (e) {
         document.getElementById('user-rows').innerHTML =
-          '<tr><td colspan="9" class="loading">불러오기 실패 (관리자 권한이 없을 수 있습니다)</td></tr>';
+          '<tr><td colspan="11" class="loading">불러오기 실패 (관리자 권한이 없을 수 있습니다)</td></tr>';
       }
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+      });
+    }
+
+    function renderPlans(plans) {
+      document.getElementById('plans-grid').innerHTML = plans.map(function(p) {
+        var isLifetime = p.period_type === 'lifetime';
+        return '<div class="plan-card" data-code="' + esc(p.code) + '">' +
+          '<div class="pcode">' + esc(p.code) + '</div>' +
+          '<div class="pname">' + esc(p.name) + '</div>' +
+          '<div class="ptype">' + (isLifetime ? '평생 누적' : '매월 리셋(구독일 기준)') + '</div>' +
+          '<div class="field"><label>가격</label><div class="row">' +
+            '<input class="inp p-price" type="number" min="0" step="100" value="' + p.price + '">' +
+            '<span class="suffix">원/월</span></div></div>' +
+          '<div class="field"><label>콘텐츠 한도</label><div class="row">' +
+            '<input class="inp p-limit" type="number" min="0" step="1" value="' + p.content_limit + '">' +
+            '<span class="suffix">개/' + (isLifetime ? '평생' : '월') + '</span></div></div>' +
+          '<button class="btn" onclick="savePlan(this)">저장</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    async function savePlan(btn) {
+      var cardEl = btn.closest('.plan-card');
+      var code = cardEl.getAttribute('data-code');
+      var price = parseInt(cardEl.querySelector('.p-price').value, 10);
+      var content_limit = parseInt(cardEl.querySelector('.p-limit').value, 10);
+      if (isNaN(price) || price < 0 || isNaN(content_limit) || content_limit < 0) {
+        alert('가격과 한도는 0 이상의 정수여야 합니다');
+        return;
+      }
+      btn.disabled = true;
+      var oldText = btn.textContent;
+      btn.textContent = '저장 중...';
+      try {
+        var res = await fetch('/api/admin/plans/' + encodeURIComponent(code), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: price, content_limit: content_limit }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || '저장 실패');
+        var updated = await res.json();
+        // 전역 목록 갱신(사용자 표의 부제/한도 표시에 사용)
+        PLANS = PLANS.map(function(p) { return p.code === code ? updated : p; });
+        btn.textContent = '✓ 저장됨';
+        setTimeout(function() { btn.textContent = oldText; btn.disabled = false; }, 1200);
+        // 사용자 사용량 표시를 최신 한도로 갱신
+        reloadUsers();
+      } catch (e) {
+        alert(e.message || '저장 실패');
+        btn.textContent = oldText;
+        btn.disabled = false;
+      }
+    }
+
+    async function changeUserPlan(sel, userId) {
+      var newPlan = sel.value;
+      var prev = sel.getAttribute('data-prev');
+      if (newPlan === prev) return;
+      sel.disabled = true;
+      try {
+        var res = await fetch('/api/admin/users/' + userId + '/plan', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_code: newPlan }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || '변경 실패');
+        reloadUsers();
+      } catch (e) {
+        alert(e.message || '변경 실패');
+        sel.value = prev;
+        sel.disabled = false;
+      }
+    }
+
+    async function reloadUsers() {
+      try {
+        var users = await fetch('/api/admin/users').then(r => r.json());
+        renderUsers(users);
+      } catch (e) {}
     }
 
     function card(label, value, accent) {
@@ -111,11 +239,27 @@
         card('총 복습', s.total_reviews);
     }
 
+    function planSelect(u) {
+      var opts = PLANS.map(function(p) {
+        return '<option value="' + esc(p.code) + '"' +
+          (p.code === u.plan_code ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      }).join('');
+      return '<select class="inp plan-select" data-prev="' + esc(u.plan_code) + '" ' +
+        'onchange="changeUserPlan(this,' + u.id + ')">' + opts + '</select>';
+    }
+
+    function usagePill(u) {
+      var full = u.usage_limit != null && u.usage_count >= u.usage_limit;
+      var txt = u.usage_count + ' / ' + u.usage_limit +
+        (u.period_type === 'lifetime' ? ' (평생)' : '/월');
+      return '<span class="usage-pill' + (full ? ' full' : '') + '">' + txt + '</span>';
+    }
+
     function renderUsers(users) {
       document.getElementById('user-count').textContent = users.length;
       if (!users.length) {
         document.getElementById('user-rows').innerHTML =
-          '<tr><td colspan="9" class="loading">사용자가 없습니다</td></tr>';
+          '<tr><td colspan="11" class="loading">사용자가 없습니다</td></tr>';
         return;
       }
       document.getElementById('user-rows').innerHTML = users.map(function(u) {
@@ -128,6 +272,8 @@
           '<td>' + (u.name || '<span class="muted">—</span>') + '</td>' +
           '<td>' + fmtDate(u.created_at) + '</td>' +
           '<td>' + login + ai + '</td>' +
+          '<td>' + planSelect(u) + '</td>' +
+          '<td class="num">' + usagePill(u) + '</td>' +
           '<td class="num">' + u.videos + '</td>' +
           '<td class="num">' + u.sentences + '</td>' +
           '<td class="num">' + u.words + '</td>' +

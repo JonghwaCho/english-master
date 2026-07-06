@@ -2,6 +2,7 @@ import sqlite3
 import os
 import hashlib
 import threading
+import calendar
 from datetime import datetime, timedelta
 
 # ── 현재 요청 사용자 컨텍스트 (멀티유저 격리) ──────────────
@@ -220,8 +221,71 @@ def init_db():
     # ── Step 2: 멀티유저 데이터 격리 마이그레이션 ──
     _migrate_multiuser(conn)
 
+    # ── 요금제·할당량(billing) 스키마 ──
+    _migrate_billing(conn)
+
     conn.commit()
     conn.close()
+
+
+# 기본 요금제 정의 (최초 1회 시드). 이후 값은 관리자 도구에서 변경 가능.
+# content_limit: 주기당 신규 콘텐츠 등록 허용 수
+# period_type: 'lifetime'(free, 평생 누적) | 'monthly'(구독 시작일 기준 매월 리셋)
+DEFAULT_PLANS = [
+    ("free",    "무료",     0,     1, "lifetime", 0),
+    ("basic",   "베이직",   3000,  5, "monthly",  1),
+    ("premium", "프리미엄", 5000, 10, "monthly",  2),
+    ("max",     "맥스",     7000, 20, "monthly",  3),
+]
+
+
+def _migrate_billing(conn):
+    """요금제(plans) + 콘텐츠 등록 원장(content_registrations) 스키마를 준비한다.
+    - users: plan_code / plan_started_at 컬럼 추가 (없으면)
+    - plans: 요금제 정의 (관리자 편집 가능). 비어 있으면 기본값 시드
+    - content_registrations: 콘텐츠 '학습 가능 등록' 이벤트 원장.
+      영상을 삭제해도 원장은 남으므로 '삭제해도 카운트 복구 안 됨'을 보장한다.
+    """
+    ucols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "plan_code" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN plan_code TEXT DEFAULT 'free'")
+    if "plan_started_at" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN plan_started_at TEXT")
+    # 기존 사용자: 구독 시작일이 없으면 가입일로 채운다
+    conn.execute("UPDATE users SET plan_started_at = created_at "
+                 "WHERE plan_started_at IS NULL OR plan_started_at = ''")
+
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS plans (
+            code         TEXT PRIMARY KEY,        -- free/basic/premium/max
+            name         TEXT NOT NULL,
+            price        INTEGER NOT NULL DEFAULT 0,   -- 원/월
+            content_limit INTEGER NOT NULL,            -- 주기당 등록 허용 수
+            period_type  TEXT NOT NULL DEFAULT 'monthly',  -- 'monthly' | 'lifetime'
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            updated_at   TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS content_registrations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL,
+            video_id     INTEGER,                  -- 영상 삭제돼도 원장은 보존
+            registered_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, video_id)
+        );
+    """)
+
+    if conn.execute("SELECT COUNT(*) FROM plans").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO plans (code, name, price, content_limit, period_type, sort_order) "
+            "VALUES (?,?,?,?,?,?)", DEFAULT_PLANS)
+
+    # 최초 도입 시: 이미 등록된 기존 콘텐츠를 원장에 백필한다(등록일=영상 생성일).
+    # 이렇게 해야 기존 사용자의 현재 사용량이 정확히 반영된다.
+    if conn.execute("SELECT COUNT(*) FROM content_registrations").fetchone()[0] == 0:
+        conn.execute("""
+            INSERT OR IGNORE INTO content_registrations (user_id, video_id, registered_at)
+            SELECT user_id, id, created_at FROM videos WHERE user_id IS NOT NULL
+        """)
 
 
 def _migrate_multiuser(conn):
@@ -317,6 +381,11 @@ def claim_orphan_data(user_id):
     conn = get_conn()
     for tbl in ("videos", "categories", "playlists", "words", "sentences", "reviews", "study_log"):
         conn.execute(f"UPDATE {tbl} SET user_id=? WHERE user_id IS NULL", (user_id,))
+    # 인수한 콘텐츠를 할당량 원장에도 반영(등록일=영상 생성일). 없으면 무시.
+    conn.execute("""
+        INSERT OR IGNORE INTO content_registrations (user_id, video_id, registered_at)
+        SELECT user_id, id, created_at FROM videos WHERE user_id=?
+    """, (user_id,))
     conn.commit()
     conn.close()
 
@@ -1267,3 +1336,155 @@ def admin_global_stats():
     }
     conn.close()
     return stats
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  요금제 · 콘텐츠 등록 할당량 (Billing / Quota)
+# ══════════════════════════════════════════════════════════════════════
+
+def get_plans():
+    """전체 요금제 목록(정렬순)."""
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM plans ORDER BY sort_order, price").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_plan(code):
+    """단일 요금제. 없으면 None."""
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM plans WHERE code=?", (code,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_plan(code, name=None, price=None, content_limit=None):
+    """관리자: 요금제의 이름/가격/콘텐츠 한도를 변경한다."""
+    sets, params = [], []
+    if name is not None:
+        sets.append("name=?"); params.append(str(name).strip())
+    if price is not None:
+        sets.append("price=?"); params.append(max(0, int(price)))
+    if content_limit is not None:
+        sets.append("content_limit=?"); params.append(max(0, int(content_limit)))
+    if not sets:
+        return False
+    sets.append("updated_at=datetime('now')")
+    params.append(code)
+    conn = get_conn()
+    cur = conn.execute(f"UPDATE plans SET {', '.join(sets)} WHERE code=?", params)
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def set_user_plan(user_id, plan_code):
+    """관리자: 사용자의 요금제를 변경한다. 구독 시작일을 지금으로 리셋한다
+    (월 할당량이 새 구독 시작일 기준으로 다시 계산됨)."""
+    conn = get_conn()
+    cur = conn.execute(
+        "UPDATE users SET plan_code=?, plan_started_at=datetime('now') WHERE id=?",
+        (plan_code, user_id))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def _add_months(dt, n):
+    """dt에 n개월을 더한다(음수 가능). 짧은 달은 말일로 보정."""
+    m = dt.month - 1 + n
+    y = dt.year + m // 12
+    m = m % 12 + 1
+    d = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=d)
+
+
+def _parse_dt(s):
+    if not s:
+        return None
+    try:
+        return datetime.strptime(str(s)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        try:
+            return datetime.strptime(str(s)[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+
+
+def _period_start(user, plan):
+    """현재 할당량 주기의 시작 시각(문자열) 반환.
+    - lifetime(free): None → 전 기간 누적으로 카운트
+    - monthly: 구독 시작일(plan_started_at, 없으면 created_at) 기준으로
+      '가장 최근 매월 기념일 <= 지금'을 계산한다.
+    """
+    if not plan or plan.get("period_type") == "lifetime":
+        return None
+    anchor = _parse_dt(user.get("plan_started_at")) or _parse_dt(user.get("created_at"))
+    if not anchor:
+        return None
+    now = datetime.utcnow()
+    months = (now.year - anchor.year) * 12 + (now.month - anchor.month)
+    cand = _add_months(anchor, months)
+    if cand > now:
+        cand = _add_months(anchor, months - 1)
+    return cand.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_usage(user_id):
+    """사용자의 현재 주기 콘텐츠 등록 사용량을 계산한다.
+    반환: plan_code, plan_name, period_type, limit, count, remaining,
+          over(bool), period_start
+    """
+    user = get_user_by_id(user_id)
+    plan_code = (user or {}).get("plan_code") or "free"
+    plan = get_plan(plan_code) or get_plan("free") or {
+        "code": "free", "name": "무료", "content_limit": 1, "period_type": "lifetime"}
+    period_start = _period_start(user or {}, plan)
+
+    conn = get_conn()
+    if period_start is None:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM content_registrations WHERE user_id=?",
+            (user_id,)).fetchone()[0]
+    else:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM content_registrations WHERE user_id=? AND registered_at >= ?",
+            (user_id, period_start)).fetchone()[0]
+    conn.close()
+
+    limit = plan["content_limit"]
+    return {
+        "plan_code": plan["code"] if "code" in plan else plan_code,
+        "plan_name": plan["name"],
+        "period_type": plan["period_type"],
+        "limit": limit,
+        "count": count,
+        "remaining": max(0, limit - count),
+        "over": count >= limit,
+        "period_start": period_start,
+    }
+
+
+def record_content_registration(video_id):
+    """현재 사용자의 콘텐츠 '학습 가능 등록'을 원장에 기록한다.
+    (user_id, video_id)로 멱등 — 같은 콘텐츠 재등록은 카운트되지 않는다.
+    새 등록 행이 실제로 삽입되면 True를 반환한다.
+    """
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO content_registrations (user_id, video_id) VALUES (?,?)",
+            (_uid(), video_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def undo_content_registration(video_id):
+    """할당량 초과로 롤백할 때: 방금 기록한 등록 원장 행을 제거한다."""
+    conn = get_conn()
+    conn.execute("DELETE FROM content_registrations WHERE user_id=? AND video_id=?",
+                 (_uid(), video_id))
+    conn.commit()
+    conn.close()

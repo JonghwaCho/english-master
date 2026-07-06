@@ -402,6 +402,7 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
   </div>
   <div class="sidebar-footer">
     <div id="user-info" style="margin-bottom:8px; color:var(--text2); font-size:12px; word-break:break-all;"></div>
+    <div id="plan-badge" style="display:none; margin-bottom:8px; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:12px;"></div>
     <a id="admin-link" href="/admin" style="display:none; margin-bottom:8px; padding:8px; background:var(--bg); border:1px solid var(--primary); border-radius:8px; color:var(--primary); font-size:12px; text-align:center; text-decoration:none;">🛠 관리자</a>
     <button onclick="logout()" style="width:100%; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text3); font-size:12px; cursor:pointer;">로그아웃</button>
     <div style="margin-top:10px;">Ebbinghaus Spaced Repetition</div>
@@ -1364,8 +1365,20 @@ async function api(url, opts = {}) {
   });
   const text = await res.text();
   if (!text) return {};
-  try { return JSON.parse(text); }
+  let data;
+  try { data = JSON.parse(text); }
   catch(e) { console.error('API parse error for', url, ':', text.slice(0, 200)); throw e; }
+  // 할당량 초과(402): 친절한 안내 문구를 error로 노출하고 요금제 배지를 갱신
+  if (data && data.error === 'quota_exceeded') {
+    data.error = data.message || '콘텐츠 등록 한도를 초과했습니다.';
+    if (typeof refreshPlanBadge === 'function') refreshPlanBadge();
+  } else if (opts.method === 'POST' && !(data && data.error) &&
+             (url.indexOf('/api/videos') === 0 || url.indexOf('/api/content/') === 0) &&
+             url.indexOf('/preview') === -1) {
+    // 콘텐츠 등록 성공 → 사용량 배지 갱신
+    if (typeof refreshPlanBadge === 'function') refreshPlanBadge();
+  }
+  return data;
 }
 
 function toast(msg, type = 'success') {
@@ -6196,6 +6209,30 @@ fetch('/api/auth/me')
     }
   })
   .catch(function() {});
+
+// 요금제/사용량 배지 — 현재 주기 콘텐츠 등록 사용량 표시
+async function refreshPlanBadge() {
+  try {
+    var d = await fetch('/api/me/plan').then(function(r) { return r.ok ? r.json() : null; });
+    if (!d || !d.usage) return;
+    var u = d.usage;
+    var el = document.getElementById('plan-badge');
+    if (!el) return;
+    var full = u.count >= u.limit;
+    var period = u.period_type === 'lifetime' ? '평생' : '이번 달';
+    var color = full ? 'var(--amber, #f59e0b)' : 'var(--primary)';
+    el.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<span style="color:var(--text2);">📦 ' + u.plan_name + '</span>' +
+        '<span style="color:' + color + ';font-weight:700;">' + u.count + '/' + u.limit + '</span>' +
+      '</div>' +
+      '<div style="color:var(--text3);margin-top:3px;font-size:11px;">' +
+        period + ' 콘텐츠 등록' + (full ? ' · 한도 도달' : ' · ' + u.remaining + '개 남음') +
+      '</div>';
+    el.style.display = 'block';
+  } catch (e) {}
+}
+refreshPlanBadge();
 
 // ── Init ───────────────────────────────────────────────
 loadDashboard().catch(function(e) { console.error('Dashboard init error:', e); });

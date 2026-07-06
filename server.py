@@ -474,6 +474,35 @@ def _require_admin():
     return None
 
 
+def _finalize_registration(db_video_id):
+    """콘텐츠가 '학습 가능 상태'로 등록된 직후 호출한다.
+    등록 이벤트를 할당량 원장에 기록하고 요금제 한도를 강제한다.
+      - 이미 등록된 콘텐츠의 재등록이면: 아무 일도 하지 않음(할당량 소비 없음).
+      - 새 등록이 한도를 초과하면: 방금 만든 콘텐츠를 롤백(삭제)하고
+        (에러 응답, 402) 튜플을 반환한다.
+      - 정상이면 None을 반환한다.
+    호출부는: `err = _finalize_registration(id); return err if err else <성공응답>`
+    """
+    if not db_video_id:
+        return None
+    is_new = db.record_content_registration(db_video_id)
+    if not is_new:
+        return None  # 재등록 — 할당량 소비 없음
+    usage = db.get_usage(session.get("user_id"))
+    if usage["count"] > usage["limit"]:
+        # 한도 초과: 방금 생성한 콘텐츠와 원장 기록을 되돌린다
+        db.undo_content_registration(db_video_id)
+        db.delete_video(db_video_id)
+        period = "평생" if usage["period_type"] == "lifetime" else "이번 주기"
+        return jsonify({
+            "error": "quota_exceeded",
+            "message": f"'{usage['plan_name']}' 요금제의 {period} 콘텐츠 등록 한도"
+                       f"({usage['limit']}개)를 모두 사용했습니다. 요금제를 업그레이드하세요.",
+            "usage": usage,
+        }), 402
+    return None
+
+
 @app.route("/admin")
 def admin_page():
     if not is_admin(current_user()):
@@ -486,7 +515,16 @@ def api_admin_users():
     guard = _require_admin()
     if guard:
         return guard
-    return jsonify(db.admin_list_users())
+    users = db.admin_list_users()
+    # 각 사용자에 요금제/현재 주기 사용량 정보를 덧붙인다
+    for u in users:
+        usage = db.get_usage(u["id"])
+        u["plan_code"] = usage["plan_code"]
+        u["plan_name"] = usage["plan_name"]
+        u["usage_count"] = usage["count"]
+        u["usage_limit"] = usage["limit"]
+        u["period_type"] = usage["period_type"]
+    return jsonify(users)
 
 
 @app.route("/api/admin/stats", methods=["GET"])
@@ -495,6 +533,75 @@ def api_admin_stats():
     if guard:
         return guard
     return jsonify(db.admin_global_stats())
+
+
+# ── API: Admin - 요금제 관리 ────────────────────────────
+
+@app.route("/api/admin/plans", methods=["GET"])
+def api_admin_get_plans():
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(db.get_plans())
+
+
+@app.route("/api/admin/plans/<code>", methods=["PUT"])
+def api_admin_update_plan(code):
+    """요금제 가격/콘텐츠 한도/이름 변경 (관리자)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    if not db.get_plan(code):
+        return jsonify({"error": "존재하지 않는 요금제입니다"}), 404
+    data = request.json or {}
+    price = data.get("price")
+    content_limit = data.get("content_limit")
+    name = data.get("name")
+    # 최소 유효성 검사
+    if price is not None:
+        try:
+            price = int(price)
+            if price < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "가격은 0 이상의 정수여야 합니다"}), 400
+    if content_limit is not None:
+        try:
+            content_limit = int(content_limit)
+            if content_limit < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "콘텐츠 한도는 0 이상의 정수여야 합니다"}), 400
+    db.update_plan(code, name=name, price=price, content_limit=content_limit)
+    return jsonify(db.get_plan(code))
+
+
+@app.route("/api/admin/users/<int:user_id>/plan", methods=["PUT"])
+def api_admin_set_user_plan(user_id):
+    """사용자 요금제 변경 (관리자). PG 연동 전까지 수동 부여 수단."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    plan_code = (request.json or {}).get("plan_code", "").strip()
+    if not db.get_plan(plan_code):
+        return jsonify({"error": "존재하지 않는 요금제입니다"}), 400
+    if not db.get_user_by_id(user_id):
+        return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
+    db.set_user_plan(user_id, plan_code)
+    return jsonify(db.get_usage(user_id))
+
+
+# ── API: 내 요금제/사용량 (사용자) ──────────────────────
+
+@app.route("/api/me/plan", methods=["GET"])
+def api_my_plan():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({
+        "usage": db.get_usage(uid),
+        "plans": db.get_plans(),
+    })
 
 
 # ── API: Categories ────────────────────────────────────
@@ -564,6 +671,9 @@ def api_add_video():
             return jsonify({"message": "이미 추가된 영상입니다", "video_id": db_video_id, "sentences": len(existing)})
 
         db.add_sentences(db_video_id, sentences)
+        quota_err = _finalize_registration(db_video_id)
+        if quota_err:
+            return quota_err
         return jsonify({
             "message": f"'{title}' 추가 완료!",
             "video_id": db_video_id,
@@ -621,6 +731,10 @@ def api_add_video_with_lyrics():
     conn.execute("UPDATE videos SET video_id=? WHERE id=?", (video_id, db_video_id))
     conn.commit()
     conn.close()
+
+    quota_err = _finalize_registration(db_video_id)
+    if quota_err:
+        return quota_err
 
     count = len(db.get_all_sentences(db_video_id))
     return jsonify({
@@ -1058,6 +1172,10 @@ def api_add_text_content():
     if error:
         return jsonify({"error": error}), 400
 
+    quota_err = _finalize_registration(db_video_id)
+    if quota_err:
+        return quota_err
+
     row = db.get_video(db_video_id) if db_video_id else None
     final_title = row["title"] if row else (title or "콘텐츠")
     count = len(db.get_all_sentences(db_video_id))
@@ -1109,6 +1227,10 @@ def api_add_url_content():
         if error:
             return jsonify({"error": error}), 400
 
+        quota_err = _finalize_registration(db_video_id)
+        if quota_err:
+            return quota_err
+
         count = len(db.get_all_sentences(db_video_id))
         return jsonify({"message": f"'{title}' 추가 완료!", "video_id": db_video_id, "sentences": count})
     except ValueError as e:
@@ -1144,6 +1266,10 @@ def api_add_file_content():
         db_video_id, error = _save_text_content(title, text, category_id, content_type='text')
         if error:
             return jsonify({"error": error}), 400
+
+        quota_err = _finalize_registration(db_video_id)
+        if quota_err:
+            return quota_err
 
         count = len(db.get_all_sentences(db_video_id))
         return jsonify({"message": f"'{title}' 추가 완료!", "video_id": db_video_id, "sentences": count})
