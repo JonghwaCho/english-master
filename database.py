@@ -224,6 +224,9 @@ def init_db():
     # ── 요금제·할당량(billing) 스키마 ──
     _migrate_billing(conn)
 
+    # ── 이메일 인증 + 앱 설정(app_settings) 스키마 ──
+    _migrate_email(conn)
+
     conn.commit()
     conn.close()
 
@@ -286,6 +289,52 @@ def _migrate_billing(conn):
             INSERT OR IGNORE INTO content_registrations (user_id, video_id, registered_at)
             SELECT user_id, id, created_at FROM videos WHERE user_id IS NOT NULL
         """)
+
+
+# 이메일(SMTP) 설정 키 — app_settings 테이블에 저장되며 관리자 도구에서 편집한다.
+EMAIL_SETTING_KEYS = ("email_enabled", "smtp_host", "smtp_port", "smtp_security",
+                      "smtp_user", "smtp_password", "email_from", "email_from_name")
+
+
+def _migrate_email(conn):
+    """이메일 인증 컬럼 + 앱 설정(app_settings) 스키마를 준비한다.
+    - users: email_verified / verify_token / verify_sent_at
+    - 기존 사용자는 email_verified=1로 처리(락아웃 방지)
+    - app_settings: 범용 키-값. 이메일(SMTP) 설정을 저장하며 관리자가 편집
+    - 최초 시드는 환경변수(SMTP_HOST 등)가 있으면 반영, 없으면 빈 값
+    """
+    ucols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "email_verified" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
+        conn.execute("ALTER TABLE users ADD COLUMN verify_token TEXT")
+        conn.execute("ALTER TABLE users ADD COLUMN verify_sent_at TEXT")
+        # 기존 사용자/구글 계정은 인증된 것으로 간주(마이그레이션으로 락아웃되지 않도록)
+        conn.execute("UPDATE users SET email_verified=1")
+
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
+    """)
+
+    # 이메일 설정 최초 시드(환경변수가 있으면 그것으로, 없으면 기본/빈 값)
+    have = conn.execute(
+        "SELECT COUNT(*) FROM app_settings WHERE key LIKE 'email_%' OR key LIKE 'smtp_%'"
+    ).fetchone()[0]
+    if have == 0:
+        seed = {
+            "email_enabled":   "1" if os.environ.get("SMTP_HOST") else "0",
+            "smtp_host":       os.environ.get("SMTP_HOST", ""),
+            "smtp_port":       os.environ.get("SMTP_PORT", "587"),
+            "smtp_security":   os.environ.get("SMTP_SECURITY", "tls"),  # tls | ssl | none
+            "smtp_user":       os.environ.get("SMTP_USER", ""),
+            "smtp_password":   os.environ.get("SMTP_PASSWORD", ""),
+            "email_from":      os.environ.get("EMAIL_FROM", ""),
+            "email_from_name": os.environ.get("EMAIL_FROM_NAME", "English Master"),
+        }
+        conn.executemany("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                         list(seed.items()))
 
 
 def _migrate_multiuser(conn):
@@ -1486,5 +1535,86 @@ def undo_content_registration(video_id):
     conn = get_conn()
     conn.execute("DELETE FROM content_registrations WHERE user_id=? AND video_id=?",
                  (_uid(), video_id))
+    conn.commit()
+    conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  이메일 인증 + 앱 설정 (Email verification / app_settings)
+# ══════════════════════════════════════════════════════════════════════
+
+def get_email_settings():
+    """이메일(SMTP) 설정을 타입 변환해 반환한다. 관리자 도구에서 편집된 값."""
+    conn = get_conn()
+    ph = ",".join("?" * len(EMAIL_SETTING_KEYS))
+    rows = conn.execute(
+        f"SELECT key, value FROM app_settings WHERE key IN ({ph})",
+        EMAIL_SETTING_KEYS).fetchall()
+    conn.close()
+    d = {r["key"]: r["value"] for r in rows}
+    try:
+        port = int(d.get("smtp_port") or 587)
+    except (TypeError, ValueError):
+        port = 587
+    return {
+        "enabled": d.get("email_enabled", "0") == "1",
+        "smtp_host": d.get("smtp_host", "") or "",
+        "smtp_port": port,
+        "smtp_security": (d.get("smtp_security") or "tls").lower(),
+        "smtp_user": d.get("smtp_user", "") or "",
+        "smtp_password": d.get("smtp_password", "") or "",
+        "email_from": (d.get("email_from") or d.get("smtp_user") or ""),
+        "email_from_name": d.get("email_from_name", "") or "English Master",
+    }
+
+
+def update_email_settings(**fields):
+    """관리자: 이메일 설정을 부분 갱신한다.
+    허용 키: enabled(bool), smtp_host, smtp_port, smtp_security,
+             smtp_user, smtp_password, email_from, email_from_name
+    (smtp_password는 값이 있을 때만 넘기도록 호출부에서 제어)
+    """
+    mapping = {
+        "enabled": "email_enabled",
+        "smtp_host": "smtp_host", "smtp_port": "smtp_port",
+        "smtp_security": "smtp_security", "smtp_user": "smtp_user",
+        "smtp_password": "smtp_password", "email_from": "email_from",
+        "email_from_name": "email_from_name",
+    }
+    conn = get_conn()
+    for k, v in fields.items():
+        if k not in mapping:
+            continue
+        if k == "enabled":
+            val = "1" if v else "0"
+        else:
+            val = "" if v is None else str(v)
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+            (mapping[k], val))
+    conn.commit()
+    conn.close()
+
+
+def set_verify_token(user_id, token):
+    """이메일 인증 토큰을 저장하고 발송 시각을 기록한다."""
+    conn = get_conn()
+    conn.execute("UPDATE users SET verify_token=?, verify_sent_at=datetime('now') WHERE id=?",
+                 (token, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_verify_token(token):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE verify_token=?", (token,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def mark_email_verified(user_id):
+    """이메일 인증 완료 처리(토큰 소거)."""
+    conn = get_conn()
+    conn.execute("UPDATE users SET email_verified=1, verify_token=NULL WHERE id=?", (user_id,))
     conn.commit()
     conn.close()

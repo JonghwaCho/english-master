@@ -6191,6 +6191,19 @@ document.addEventListener('click', function(e) {
   pickQuizOpt(btn, btn.dataset.qid, btn.dataset.next);
 });
 
+// 이메일 인증 완료 후 돌아온 경우 안내
+(function() {
+  try {
+    var q = new URLSearchParams(window.location.search);
+    if (q.get('verified') === '1') {
+      toast('이메일 인증이 완료되었습니다. 환영합니다!', 'success');
+      q.delete('verified');
+      var qs = q.toString();
+      history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+    }
+  } catch (e) {}
+})();
+
 // ── Auth: 사용자 정보 표시 + 로그아웃 ───────────────────
 async function logout() {
   try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}

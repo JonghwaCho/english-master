@@ -115,9 +115,17 @@
   <script>
     let mode = 'login';
 
-    // 구글 콜백 등에서 넘어온 에러 표시
+    var lastEmail = '';
+
+    // 구글 콜백/이메일 인증 등에서 넘어온 상태 표시
     (function() {
-      var err = new URLSearchParams(window.location.search).get('error');
+      var q = new URLSearchParams(window.location.search);
+      var err = q.get('error');
+      var verify = q.get('verify');
+      if (verify === 'invalid') {
+        setMsg('인증 링크가 유효하지 않거나 만료되었습니다. 로그인 후 인증 메일을 다시 받으세요.', true);
+        return;
+      }
       if (!err) return;
       var map = {
         google_unconfigured: '구글 로그인이 아직 설정되지 않았습니다.',
@@ -155,6 +163,7 @@
       const password = document.getElementById('password').value;
       const name = document.getElementById('name').value.trim();
       const url = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+      lastEmail = email;
 
       btn.disabled = true;
       setMsg('처리 중...');
@@ -165,8 +174,21 @@
           body: JSON.stringify({ email, password, name })
         });
         const data = await res.json();
+
+        // 이메일 미인증으로 로그인 차단 → 재발송 안내
+        if (res.status === 403 && data.error === 'email_unverified') {
+          showVerifyNotice(data.message || '이메일 인증이 필요합니다.', email);
+          btn.disabled = false;
+          return false;
+        }
         if (!res.ok) {
           setMsg(data.error || '오류가 발생했습니다.', true);
+          btn.disabled = false;
+          return false;
+        }
+        // 가입 후 인증 대기 상태 → 앱으로 보내지 않고 안내
+        if (data.pending_verification) {
+          showVerifyNotice(data.message || '인증 메일을 확인하세요.', email, data.dev_verify_url);
           btn.disabled = false;
           return false;
         }
@@ -176,6 +198,42 @@
         btn.disabled = false;
       }
       return false;
+    }
+
+    // 인증 안내 + 재발송 버튼(+로컬 dev 링크) 표시
+    function showVerifyNotice(message, email, devLink) {
+      const el = document.getElementById('msg');
+      el.className = 'msg';
+      var html = '<div>📧 ' + escapeHtml(message) + '</div>' +
+        '<button type="button" id="resendBtn" class="btn" style="margin-top:12px;padding:9px;font-size:13px;" ' +
+        'onclick="resendVerification(\'' + escapeHtml(email) + '\')">인증 메일 재발송</button>';
+      if (devLink) {
+        html += '<div class="hint" style="margin-top:10px;">개발용 인증 링크: ' +
+          '<a href="' + escapeHtml(devLink) + '" style="color:var(--purple);word-break:break-all;">인증하기</a></div>';
+      }
+      el.innerHTML = html;
+    }
+
+    async function resendVerification(email) {
+      const b = document.getElementById('resendBtn');
+      if (b) { b.disabled = true; b.textContent = '보내는 중...'; }
+      try {
+        const res = await fetch('/api/auth/resend-verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email })
+        });
+        const data = await res.json();
+        showVerifyNotice(data.message || '인증 메일을 다시 보냈습니다.', email, data.dev_verify_url);
+      } catch (e) {
+        if (b) { b.disabled = false; b.textContent = '인증 메일 재발송'; }
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+      });
     }
   </script>
 </body>

@@ -16,9 +16,11 @@ from flask import Flask, render_template, jsonify, request, session, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
+import secrets
 import database as db
 import youtube_service as yt
 import text_utils
+import email_service
 from queue import Queue
 from srs import get_level_name, format_next_review
 
@@ -311,6 +313,26 @@ def health():
 
 # ── API: Auth ───────────────────────────────────────────
 
+def _send_verification(user):
+    """인증 토큰을 발급·저장하고 인증 메일을 보낸다.
+    반환: (성공여부, 에러, dev_link)
+      - dev_link: SMTP 미설정/발송실패 시, 로컬(app.debug)에서만 테스트용 링크를 노출
+    """
+    token = secrets.token_urlsafe(32)
+    db.set_verify_token(user["id"], token)
+    link = request.host_url.rstrip("/") + "/api/auth/verify?token=" + token
+    settings = db.get_email_settings()
+    subject, text, html = email_service.verification_email_bodies(link)
+    ok, err = email_service.send_email(settings, user["email"], subject, text, html)
+    dev_link = None
+    if not ok:
+        # 발송 실패(미설정 포함): 링크를 로그로 남겨 운영자가 흐름을 확인/테스트할 수 있게 함
+        logging.warning(f"[verify] 메일 발송 실패({err}). {user['email']} 인증 링크: {link}")
+        if app.debug or not settings.get("enabled"):
+            dev_link = link
+    return ok, err, dev_link
+
+
 @app.route("/api/auth/signup", methods=["POST"])
 def api_signup():
     data = request.get_json(silent=True) or {}
@@ -334,12 +356,29 @@ def api_signup():
     if not user:
         return jsonify({"error": "가입에 실패했습니다."}), 500
 
-    # 첫 가입자는 기존 단일 사용자 데이터(소유자 없는 데이터)를 인수한다.
+    # 최초 운영자(첫 가입자 = 관리자)는 자동 인증한다.
+    # 닭-달걀 방지: SMTP를 설정하려면 /admin 로그인이 필요한데, 로그인엔 인증이 필요하고,
+    # 인증 메일 발송엔 SMTP 설정이 필요하다. 이 순환을 끊기 위해 첫 사용자는 인증 없이 통과.
     if db.count_users() == 1:
         db.claim_orphan_data(user["id"])
+        db.mark_email_verified(user["id"])
+        session["user_id"] = user["id"]
+        return jsonify({"id": user["id"], "email": user["email"], "name": user["name"],
+                        "verified": True})
 
-    session["user_id"] = user["id"]
-    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
+    # 그 외 사용자: 인증 메일을 보내고 로그인은 보류(인증 완료 후 로그인 가능)
+    ok, err, dev_link = _send_verification(user)
+    resp = {
+        "pending_verification": True,
+        "email": user["email"],
+        "message": "인증 메일을 보냈습니다. 메일함을 확인해 인증을 완료한 뒤 로그인하세요.",
+    }
+    if not ok:
+        resp["message"] = ("가입은 완료됐지만 인증 메일 발송에 실패했습니다. "
+                           "잠시 후 재발송하거나 운영자에게 문의하세요.")
+    if dev_link:
+        resp["dev_verify_url"] = dev_link
+    return jsonify(resp)
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -352,8 +391,41 @@ def api_login():
     if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
         return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
 
+    # 이메일 미인증 계정은 로그인 차단(구글 계정은 이미 검증되어 email_verified=1)
+    if not user.get("email_verified"):
+        return jsonify({
+            "error": "email_unverified",
+            "message": "이메일 인증이 필요합니다. 메일함의 인증 링크를 확인하세요.",
+            "email": user["email"],
+        }), 403
+
     session["user_id"] = user["id"]
     return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
+
+
+@app.route("/api/auth/verify", methods=["GET"])
+def api_verify_email():
+    """인증 링크 클릭 → 인증 완료 후 즉시 로그인시키고 앱으로 보낸다."""
+    token = request.args.get("token", "")
+    user = db.get_user_by_verify_token(token) if token else None
+    if not user:
+        return redirect("/login?verify=invalid")
+    db.mark_email_verified(user["id"])
+    session["user_id"] = user["id"]
+    return redirect("/?verified=1")
+
+
+@app.route("/api/auth/resend-verification", methods=["POST"])
+def api_resend_verification():
+    """인증 메일 재발송. 계정 존재 여부는 노출하지 않도록 항상 동일 응답."""
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    user = db.get_user_by_email(email)
+    resp = {"message": "인증 메일을 다시 보냈습니다. 메일함을 확인하세요."}
+    if user and user.get("password_hash") and not user.get("email_verified"):
+        ok, err, dev_link = _send_verification(user)
+        if dev_link:
+            resp["dev_verify_url"] = dev_link
+    return jsonify(resp)
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -457,6 +529,8 @@ def api_google_callback():
         user = db.create_user(email=email, password_hash=None, name=name, google_id=google_id)
         if not user:
             return redirect("/login?error=create")
+        # 구글이 이미 이메일을 검증했으므로 자동 인증 처리
+        db.mark_email_verified(user["id"])
         # 첫 가입자는 기존 데이터 인수
         if db.count_users() == 1:
             db.claim_orphan_data(user["id"])
@@ -589,6 +663,61 @@ def api_admin_set_user_plan(user_id):
         return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
     db.set_user_plan(user_id, plan_code)
     return jsonify(db.get_usage(user_id))
+
+
+# ── API: Admin - 이메일(SMTP) 설정 ─────────────────────
+
+def _email_settings_public(s):
+    """비밀번호 값은 노출하지 않고 설정 여부(has_password)만 반환."""
+    s = dict(s)
+    s["has_password"] = bool(s.pop("smtp_password", ""))
+    return s
+
+
+@app.route("/api/admin/email-settings", methods=["GET"])
+def api_admin_get_email():
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(_email_settings_public(db.get_email_settings()))
+
+
+@app.route("/api/admin/email-settings", methods=["PUT"])
+def api_admin_update_email():
+    """이메일(SMTP) 설정 변경 (관리자). 발송 주체를 운영자가 자유롭게 바꾼다."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.json or {}
+    fields = {}
+    for k in ("smtp_host", "smtp_port", "smtp_security", "smtp_user",
+              "email_from", "email_from_name"):
+        if k in data:
+            fields[k] = data[k]
+    if "enabled" in data:
+        fields["enabled"] = bool(data["enabled"])
+    # 비밀번호는 값이 있을 때만 갱신(빈 값이면 기존 유지 → 마스킹 UX)
+    if data.get("smtp_password"):
+        fields["smtp_password"] = data["smtp_password"]
+    db.update_email_settings(**fields)
+    return jsonify(_email_settings_public(db.get_email_settings()))
+
+
+@app.route("/api/admin/email-settings/test", methods=["POST"])
+def api_admin_test_email():
+    """현재 설정으로 관리자 본인에게 테스트 메일을 보낸다."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    to = current_user()["email"]
+    ok, err = email_service.send_email(
+        db.get_email_settings(), to,
+        "[English Master] 테스트 메일",
+        "이 메일을 받으셨다면 SMTP 설정이 정상입니다.",
+        "<p>이 메일을 받으셨다면 <b>SMTP 설정이 정상</b>입니다.</p>")
+    if ok:
+        return jsonify({"ok": True, "message": f"{to} 로 테스트 메일을 보냈습니다."})
+    return jsonify({"ok": False, "error": err or "발송 실패"}), 400
 
 
 # ── API: 내 요금제/사용량 (사용자) ──────────────────────

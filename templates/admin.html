@@ -95,6 +95,15 @@
       free는 평생 누적, 나머지는 구독 시작일 기준 매월 리셋됩니다.
     </p>
 
+    <div class="section-title">이메일(SMTP) 발송 설정</div>
+    <div class="plan-card" style="max-width:560px;margin-bottom:8px;" id="email-card">
+      <div class="loading">불러오는 중...</div>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:28px;">
+      회원가입 인증 메일을 보낼 계정입니다. 이 서비스를 운영하는 <b>본인의 메일 계정</b>을 넣으세요(예: Gmail은 앱 비밀번호).
+      설정 전에는 인증 메일이 발송되지 않고 인증 링크가 서버 로그에만 남습니다.
+    </p>
+
     <div class="section-title">사용자 (<span id="user-count">0</span>명)</div>
     <div class="table-wrap">
       <table>
@@ -123,19 +132,97 @@
 
     async function load() {
       try {
-        const [stats, users, plans] = await Promise.all([
+        const [stats, users, plans, email] = await Promise.all([
           fetch('/api/admin/stats').then(r => r.json()),
           fetch('/api/admin/users').then(r => r.json()),
           fetch('/api/admin/plans').then(r => r.json()),
+          fetch('/api/admin/email-settings').then(r => r.json()),
         ]);
         PLANS = plans;
         renderStats(stats);
         renderPlans(plans);
+        renderEmail(email);
         renderUsers(users);
       } catch (e) {
         document.getElementById('user-rows').innerHTML =
           '<tr><td colspan="11" class="loading">불러오기 실패 (관리자 권한이 없을 수 있습니다)</td></tr>';
       }
+    }
+
+    function field(label, id, value, type, ph) {
+      return '<div class="field"><label>' + label + '</label>' +
+        '<input class="inp" id="' + id + '" type="' + (type || 'text') + '" ' +
+        'value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(ph || '') + '"></div>';
+    }
+
+    function renderEmail(s) {
+      var secSel = ['tls', 'ssl', 'none'].map(function(v) {
+        return '<option value="' + v + '"' + (s.smtp_security === v ? ' selected' : '') + '>' +
+          v.toUpperCase() + '</option>';
+      }).join('');
+      document.getElementById('email-card').innerHTML =
+        '<div class="field"><label>발송 사용</label><div class="row">' +
+          '<select class="inp" id="em-enabled" style="width:auto;">' +
+            '<option value="1"' + (s.enabled ? ' selected' : '') + '>사용함</option>' +
+            '<option value="0"' + (!s.enabled ? ' selected' : '') + '>사용 안 함</option>' +
+          '</select></div></div>' +
+        field('SMTP 호스트', 'em-host', s.smtp_host, 'text', 'smtp.gmail.com') +
+        '<div class="field"><label>포트 / 보안</label><div class="row">' +
+          '<input class="inp" id="em-port" type="number" value="' + (s.smtp_port || 587) + '" style="max-width:110px;">' +
+          '<select class="inp" id="em-security" style="width:auto;">' + secSel + '</select></div></div>' +
+        field('SMTP 사용자(계정)', 'em-user', s.smtp_user, 'text', 'you@gmail.com') +
+        field('SMTP 비밀번호', 'em-pass', '', 'password',
+              s.has_password ? '설정됨 — 변경할 때만 입력' : '앱 비밀번호 입력') +
+        field('발신 주소(From)', 'em-from', s.email_from, 'text', '비우면 SMTP 계정 사용') +
+        field('발신자 이름', 'em-fromname', s.email_from_name, 'text', 'English Master') +
+        '<div style="display:flex;gap:8px;margin-top:14px;">' +
+          '<button class="btn" onclick="saveEmail(this)">저장</button>' +
+          '<button class="btn" style="background:var(--bg2);border:1px solid var(--border);" onclick="testEmail(this)">테스트 메일 발송</button>' +
+        '</div>' +
+        '<div id="em-msg" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>';
+    }
+
+    async function saveEmail(btn) {
+      var body = {
+        enabled: document.getElementById('em-enabled').value === '1',
+        smtp_host: document.getElementById('em-host').value.trim(),
+        smtp_port: parseInt(document.getElementById('em-port').value, 10) || 587,
+        smtp_security: document.getElementById('em-security').value,
+        smtp_user: document.getElementById('em-user').value.trim(),
+        email_from: document.getElementById('em-from').value.trim(),
+        email_from_name: document.getElementById('em-fromname').value.trim(),
+      };
+      var pw = document.getElementById('em-pass').value;
+      if (pw) body.smtp_password = pw;  // 입력했을 때만 변경
+      btn.disabled = true; btn.textContent = '저장 중...';
+      var msg = document.getElementById('em-msg');
+      try {
+        var res = await fetch('/api/admin/email-settings', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || '저장 실패');
+        renderEmail(await res.json());
+        document.getElementById('em-msg').innerHTML = '<span style="color:var(--green);">✓ 저장되었습니다</span>';
+      } catch (e) {
+        msg.innerHTML = '<span style="color:var(--amber);">' + esc(e.message) + '</span>';
+        btn.disabled = false; btn.textContent = '저장';
+      }
+    }
+
+    async function testEmail(btn) {
+      btn.disabled = true; var old = btn.textContent; btn.textContent = '발송 중...';
+      var msg = document.getElementById('em-msg');
+      try {
+        var res = await fetch('/api/admin/email-settings/test', { method: 'POST' });
+        var data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '발송 실패');
+        msg.innerHTML = '<span style="color:var(--green);">✓ ' + esc(data.message) + '</span>';
+      } catch (e) {
+        msg.innerHTML = '<span style="color:var(--amber);">발송 실패: ' + esc(e.message) +
+          ' (설정을 저장한 뒤 다시 시도하세요)</span>';
+      }
+      btn.disabled = false; btn.textContent = old;
     }
 
     function esc(s) {
