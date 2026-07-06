@@ -1,7 +1,27 @@
 import sqlite3
 import os
 import hashlib
+import threading
 from datetime import datetime, timedelta
+
+# ── 현재 요청 사용자 컨텍스트 (멀티유저 격리) ──────────────
+# 요청마다 server.py before_request에서 set_current_user()로 설정하고,
+# 데이터 함수들은 _uid()로 현재 사용자를 읽어 자동으로 필터/기록한다.
+# 백그라운드 워커는 요청 컨텍스트가 없으므로, 전역 캐시(word_meanings/ai_cache)만
+# 다루거나, 플레이리스트 소유자를 명시적으로 set_current_user() 한다.
+_ctx = threading.local()
+
+
+def set_current_user(user_id):
+    _ctx.user_id = user_id
+
+
+def clear_current_user():
+    _ctx.user_id = None
+
+
+def _uid():
+    return getattr(_ctx, "user_id", None)
 
 # 데이터 저장 경로: 로컬은 프로젝트 내 data/, 클라우드 배포 시 DATA_DIR 환경변수로
 # 영구 볼륨(예: /data)을 지정한다.
@@ -197,6 +217,106 @@ def init_db():
         )
     """)
 
+    # ── Step 2: 멀티유저 데이터 격리 마이그레이션 ──
+    _migrate_multiuser(conn)
+
+    conn.commit()
+    conn.close()
+
+
+def _migrate_multiuser(conn):
+    """user_id 컬럼이 없으면 사용자 격리 스키마로 마이그레이션한다.
+    - videos/words/categories/playlists: user_id + 복합 UNIQUE로 테이블 재구축(id 보존)
+    - sentences/reviews/study_log: user_id 컬럼 추가
+    기존 데이터의 user_id는 NULL로 두고, 첫 가입자가 claim_orphan_data()로 인수한다.
+    """
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(videos)").fetchall()]
+    if "user_id" in cols:
+        return  # 이미 마이그레이션됨
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.executescript("""
+        -- videos 재구축: UNIQUE(url) → UNIQUE(user_id, url)
+        CREATE TABLE videos_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            video_id TEXT,
+            title TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            category_id INTEGER,
+            content_type TEXT DEFAULT 'youtube',
+            source_text TEXT DEFAULT '',
+            UNIQUE(user_id, url)
+        );
+        INSERT INTO videos_new (id, url, video_id, title, created_at, category_id, content_type, source_text)
+            SELECT id, url, video_id, title, created_at, category_id, content_type, source_text FROM videos;
+        DROP TABLE videos;
+        ALTER TABLE videos_new RENAME TO videos;
+
+        -- categories 재구축: UNIQUE(name) → UNIQUE(user_id, name)
+        CREATE TABLE categories_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, name)
+        );
+        INSERT INTO categories_new (id, name, created_at)
+            SELECT id, name, created_at FROM categories;
+        DROP TABLE categories;
+        ALTER TABLE categories_new RENAME TO categories;
+
+        -- words 재구축: UNIQUE(word) → UNIQUE(user_id, word)
+        CREATE TABLE words_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            word TEXT NOT NULL,
+            status TEXT DEFAULT 'unknown',
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, word)
+        );
+        INSERT INTO words_new (id, word, status, created_at)
+            SELECT id, word, status, created_at FROM words;
+        DROP TABLE words;
+        ALTER TABLE words_new RENAME TO words;
+
+        -- playlists 재구축: UNIQUE(playlist_id) → UNIQUE(user_id, playlist_id)
+        CREATE TABLE playlists_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            playlist_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            category_id INTEGER,
+            enabled INTEGER DEFAULT 1,
+            last_checked TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, playlist_id)
+        );
+        INSERT INTO playlists_new (id, playlist_id, title, url, category_id, enabled, last_checked, created_at)
+            SELECT id, playlist_id, title, url, category_id, enabled, last_checked, created_at FROM playlists;
+        DROP TABLE playlists;
+        ALTER TABLE playlists_new RENAME TO playlists;
+    """)
+
+    # sentences/reviews/study_log: user_id 컬럼 추가
+    for tbl in ("sentences", "reviews", "study_log"):
+        try:
+            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN user_id INTEGER")
+        except Exception:
+            pass
+
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.commit()
+
+
+def claim_orphan_data(user_id):
+    """소유자 없는(user_id IS NULL) 기존 데이터를 지정 사용자에게 귀속시킨다.
+    첫 가입자가 기존 단일 사용자 데이터를 인수할 때 호출한다."""
+    conn = get_conn()
+    for tbl in ("videos", "categories", "playlists", "words", "sentences", "reviews", "study_log"):
+        conn.execute(f"UPDATE {tbl} SET user_id=? WHERE user_id IS NULL", (user_id,))
     conn.commit()
     conn.close()
 
@@ -269,8 +389,8 @@ def log_study_activity(item_id, item_type, action, correct=None):
     """학습/복습 활동을 로그에 기록 (action: 'study', 'review', 'bulk_study')"""
     conn = get_conn()
     conn.execute(
-        "INSERT INTO study_log (item_id, item_type, action, correct) VALUES (?, ?, ?, ?)",
-        (item_id, item_type, action, 1 if correct else (0 if correct is False else None))
+        "INSERT INTO study_log (item_id, item_type, action, correct, user_id) VALUES (?, ?, ?, ?, ?)",
+        (item_id, item_type, action, 1 if correct else (0 if correct is False else None), _uid())
     )
     conn.commit()
     conn.close()
@@ -280,38 +400,38 @@ def log_study_activity(item_id, item_type, action, correct=None):
 
 def get_categories():
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    rows = conn.execute("SELECT * FROM categories WHERE user_id=? ORDER BY name", (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def add_category(name):
     conn = get_conn()
-    conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
+    conn.execute("INSERT OR IGNORE INTO categories (name, user_id) VALUES (?, ?)", (name, _uid()))
     conn.commit()
-    row = conn.execute("SELECT id FROM categories WHERE name=?", (name,)).fetchone()
+    row = conn.execute("SELECT id FROM categories WHERE name=? AND user_id=?", (name, _uid())).fetchone()
     conn.close()
     return row["id"] if row else None
 
 
 def delete_category(category_id):
     conn = get_conn()
-    conn.execute("UPDATE videos SET category_id=NULL WHERE category_id=?", (category_id,))
-    conn.execute("DELETE FROM categories WHERE id=?", (category_id,))
+    conn.execute("UPDATE videos SET category_id=NULL WHERE category_id=? AND user_id=?", (category_id, _uid()))
+    conn.execute("DELETE FROM categories WHERE id=? AND user_id=?", (category_id, _uid()))
     conn.commit()
     conn.close()
 
 
 def rename_category(category_id, new_name):
     conn = get_conn()
-    conn.execute("UPDATE categories SET name=? WHERE id=?", (new_name, category_id))
+    conn.execute("UPDATE categories SET name=? WHERE id=? AND user_id=?", (new_name, category_id, _uid()))
     conn.commit()
     conn.close()
 
 
 def set_video_category(video_id, category_id):
     conn = get_conn()
-    conn.execute("UPDATE videos SET category_id=? WHERE id=?", (category_id, video_id))
+    conn.execute("UPDATE videos SET category_id=? WHERE id=? AND user_id=?", (category_id, video_id, _uid()))
     conn.commit()
     conn.close()
 
@@ -321,10 +441,10 @@ def set_video_category(video_id, category_id):
 def add_video(url, video_id, title):
     conn = get_conn()
     try:
-        conn.execute("INSERT OR IGNORE INTO videos (url, video_id, title) VALUES (?,?,?)",
-                      (url, video_id, title))
+        conn.execute("INSERT OR IGNORE INTO videos (url, video_id, title, user_id) VALUES (?,?,?,?)",
+                      (url, video_id, title, _uid()))
         conn.commit()
-        row = conn.execute("SELECT id FROM videos WHERE url=?", (url,)).fetchone()
+        row = conn.execute("SELECT id FROM videos WHERE url=? AND user_id=?", (url, _uid())).fetchone()
         return row["id"]
     finally:
         conn.close()
@@ -338,20 +458,20 @@ def add_text_content(title, text, category_id=None, content_type='text', url=Non
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO videos (url, video_id, title, content_type, source_text, category_id) VALUES (?,?,?,?,?,?)",
-            (url, None, title, content_type, text, category_id)
+            "INSERT OR IGNORE INTO videos (url, video_id, title, content_type, source_text, category_id, user_id) VALUES (?,?,?,?,?,?,?)",
+            (url, None, title, content_type, text, category_id, _uid())
         )
         conn.commit()
-        row = conn.execute("SELECT id FROM videos WHERE url=?", (url,)).fetchone()
+        row = conn.execute("SELECT id FROM videos WHERE url=? AND user_id=?", (url, _uid())).fetchone()
         return row["id"] if row else None
     finally:
         conn.close()
 
 
 def get_video(video_id):
-    """Get a single video/content by ID."""
+    """Get a single video/content by ID (현재 사용자 소유만)."""
     conn = get_conn()
-    row = conn.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone()
+    row = conn.execute("SELECT * FROM videos WHERE id=? AND user_id=?", (video_id, _uid())).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -368,14 +488,15 @@ def get_videos(category_id=None):
         FROM videos v
         LEFT JOIN sentences s ON v.id = s.video_id
         LEFT JOIN categories c ON v.category_id = c.id
+        WHERE v.user_id=?
     """
-    params = ()
+    params = [_uid()]
     if category_id is not None:
         if category_id == 0:
-            query += " WHERE v.category_id IS NULL"
+            query += " AND v.category_id IS NULL"
         else:
-            query += " WHERE v.category_id=?"
-            params = (category_id,)
+            query += " AND v.category_id=?"
+            params.append(category_id)
     query += " GROUP BY v.id ORDER BY v.created_at DESC"
     rows = conn.execute(query, params).fetchall()
     conn.close()
@@ -384,17 +505,25 @@ def get_videos(category_id=None):
 
 def delete_video(video_id):
     conn = get_conn()
+    # 소유 확인: 내 영상이 아니면 아무것도 삭제하지 않음
+    owned = conn.execute("SELECT 1 FROM videos WHERE id=? AND user_id=?", (video_id, _uid())).fetchone()
+    if not owned:
+        conn.close()
+        return
     conn.execute("DELETE FROM reviews WHERE item_type='sentence' AND item_id IN (SELECT id FROM sentences WHERE video_id=?)", (video_id,))
     conn.execute("DELETE FROM sentences WHERE video_id=?", (video_id,))
-    conn.execute("DELETE FROM videos WHERE id=?", (video_id,))
+    conn.execute("DELETE FROM videos WHERE id=? AND user_id=?", (video_id, _uid()))
     conn.commit()
     conn.close()
 
 
 def delete_sentence(sentence_id):
-    """Delete a single sentence and its associated reviews."""
+    """Delete a single sentence and its associated reviews (현재 사용자 소유만)."""
     conn = get_conn()
     try:
+        owned = conn.execute("SELECT 1 FROM sentences WHERE id=? AND user_id=?", (sentence_id, _uid())).fetchone()
+        if not owned:
+            return
         conn.execute("DELETE FROM reviews WHERE item_type='sentence' AND item_id=?", (sentence_id,))
         conn.execute("DELETE FROM sentences WHERE id=?", (sentence_id,))
         conn.commit()
@@ -407,15 +536,16 @@ def delete_sentence(sentence_id):
 def add_sentences(video_id, sentences):
     """sentences: list of (paragraph_idx, sentence_idx, text[, start_time, end_time])"""
     conn = get_conn()
+    uid = _uid()
     data = []
     for item in sentences:
         if len(item) >= 5:
             p, s, t, st, et = item[0], item[1], item[2], item[3], item[4]
         else:
             p, s, t, st, et = item[0], item[1], item[2], None, None
-        data.append((video_id, p, s, t, st, et))
+        data.append((video_id, p, s, t, st, et, uid))
     conn.executemany(
-        "INSERT INTO sentences (video_id, paragraph_idx, sentence_idx, text, start_time, end_time) VALUES (?,?,?,?,?,?)",
+        "INSERT INTO sentences (video_id, paragraph_idx, sentence_idx, text, start_time, end_time, user_id) VALUES (?,?,?,?,?,?,?)",
         data
     )
     conn.commit()
@@ -428,16 +558,16 @@ def get_sentences_for_study(video_id=None):
         rows = conn.execute("""
             SELECT s.*, v.video_id as youtube_video_id, v.content_type
             FROM sentences s JOIN videos v ON s.video_id = v.id
-            WHERE s.video_id=? AND s.status='new'
+            WHERE s.video_id=? AND s.status='new' AND s.user_id=?
             ORDER BY s.paragraph_idx, s.sentence_idx
-        """, (video_id,)).fetchall()
+        """, (video_id, _uid())).fetchall()
     else:
         rows = conn.execute("""
             SELECT s.*, v.video_id as youtube_video_id, v.content_type
             FROM sentences s JOIN videos v ON s.video_id = v.id
-            WHERE s.status='new'
+            WHERE s.status='new' AND s.user_id=?
             ORDER BY s.video_id, s.paragraph_idx, s.sentence_idx
-        """).fetchall()
+        """, (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -447,9 +577,9 @@ def get_paragraph_sentences(video_id, paragraph_idx):
     rows = conn.execute("""
         SELECT s.*, v.video_id as youtube_video_id, v.content_type
         FROM sentences s JOIN videos v ON s.video_id = v.id
-        WHERE s.video_id=? AND s.paragraph_idx=?
+        WHERE s.video_id=? AND s.paragraph_idx=? AND s.user_id=?
         ORDER BY s.sentence_idx
-    """, (video_id, paragraph_idx)).fetchall()
+    """, (video_id, paragraph_idx, _uid())).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -458,9 +588,9 @@ def get_paragraphs_for_study(video_id):
     conn = get_conn()
     rows = conn.execute("""
         SELECT DISTINCT paragraph_idx FROM sentences
-        WHERE video_id=? AND status='new'
+        WHERE video_id=? AND status='new' AND user_id=?
         ORDER BY paragraph_idx
-    """, (video_id,)).fetchall()
+    """, (video_id, _uid())).fetchall()
     conn.close()
     return [r["paragraph_idx"] for r in rows]
 
@@ -471,11 +601,11 @@ def mark_sentence(sentence_id, status):
     conn = get_conn()
     if status == 'unknown':
         conn.execute(
-            "UPDATE sentences SET status=?, unknown_count = COALESCE(unknown_count, 0) + 1 WHERE id=?",
-            (status, sentence_id)
+            "UPDATE sentences SET status=?, unknown_count = COALESCE(unknown_count, 0) + 1 WHERE id=? AND user_id=?",
+            (status, sentence_id, _uid())
         )
     else:
-        conn.execute("UPDATE sentences SET status=? WHERE id=?", (status, sentence_id))
+        conn.execute("UPDATE sentences SET status=? WHERE id=? AND user_id=?", (status, sentence_id, _uid()))
     conn.commit()
     conn.close()
     # 학습 활동 로그 기록
@@ -501,9 +631,9 @@ def get_unknown_sentences(video_id=None):
         FROM sentences s
         JOIN videos v ON s.video_id = v.id
         LEFT JOIN reviews r ON r.item_id = s.id AND r.item_type = 'sentence'
-        WHERE s.status='unknown'
+        WHERE s.status='unknown' AND s.user_id=?
     """
-    params = []
+    params = [_uid()]
     if video_id:
         sql += " AND s.video_id = ?"
         params.append(video_id)
@@ -519,15 +649,15 @@ def get_known_sentences():
     rows = conn.execute("""
         SELECT s.*, v.title as video_title
         FROM sentences s JOIN videos v ON s.video_id = v.id
-        WHERE s.status='known' ORDER BY s.id DESC
-    """).fetchall()
+        WHERE s.status='known' AND s.user_id=? ORDER BY s.id DESC
+    """, (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def get_translation(sentence_id):
     conn = get_conn()
-    row = conn.execute("SELECT translation FROM sentences WHERE id=?", (sentence_id,)).fetchone()
+    row = conn.execute("SELECT translation FROM sentences WHERE id=? AND user_id=?", (sentence_id, _uid())).fetchone()
     conn.close()
     if row and row["translation"]:
         return row["translation"]
@@ -536,7 +666,7 @@ def get_translation(sentence_id):
 
 def save_translation(sentence_id, translation):
     conn = get_conn()
-    conn.execute("UPDATE sentences SET translation=? WHERE id=?", (translation, sentence_id))
+    conn.execute("UPDATE sentences SET translation=? WHERE id=? AND user_id=?", (translation, sentence_id, _uid()))
     conn.commit()
     conn.close()
 
@@ -547,9 +677,9 @@ def get_all_sentences_for_video(video_id):
     rows = conn.execute("""
         SELECT s.*, v.video_id as youtube_video_id, v.title as video_title, v.content_type
         FROM sentences s JOIN videos v ON s.video_id = v.id
-        WHERE s.video_id=?
+        WHERE s.video_id=? AND s.user_id=?
         ORDER BY s.paragraph_idx, s.sentence_idx
-    """, (video_id,)).fetchall()
+    """, (video_id, _uid())).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -558,11 +688,11 @@ def get_all_sentences(video_id=None):
     conn = get_conn()
     if video_id:
         rows = conn.execute(
-            "SELECT * FROM sentences WHERE video_id=? ORDER BY paragraph_idx, sentence_idx",
-            (video_id,)
+            "SELECT * FROM sentences WHERE video_id=? AND user_id=? ORDER BY paragraph_idx, sentence_idx",
+            (video_id, _uid())
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM sentences ORDER BY video_id, paragraph_idx, sentence_idx").fetchall()
+        rows = conn.execute("SELECT * FROM sentences WHERE user_id=? ORDER BY video_id, paragraph_idx, sentence_idx", (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -574,16 +704,17 @@ def add_unknown_word(word):
     if not word:
         return
     conn = get_conn()
-    conn.execute("INSERT OR IGNORE INTO words (word, status) VALUES (?, 'unknown')", (word,))
+    uid = _uid()
+    conn.execute("INSERT OR IGNORE INTO words (word, status, user_id) VALUES (?, 'unknown', ?)", (word, uid))
     conn.commit()
     # Also schedule review
     now = datetime.now().isoformat()
-    word_row = conn.execute("SELECT id FROM words WHERE word=?", (word,)).fetchone()
+    word_row = conn.execute("SELECT id FROM words WHERE word=? AND user_id=?", (word, uid)).fetchone()
     if word_row:
         conn.execute("""
-            INSERT OR IGNORE INTO reviews (item_id, item_type, level, next_review, last_review)
-            VALUES (?, 'word', 0, ?, ?)
-        """, (word_row["id"], now, now))
+            INSERT OR IGNORE INTO reviews (item_id, item_type, level, next_review, last_review, user_id)
+            VALUES (?, 'word', 0, ?, ?, ?)
+        """, (word_row["id"], now, now, uid))
         conn.commit()
     conn.close()
 
@@ -598,9 +729,9 @@ def get_unknown_words(video_id=None):
             FROM words w
             JOIN word_video_link wl ON wl.word_id = w.id
             LEFT JOIN reviews r ON r.item_id = w.id AND r.item_type = 'word'
-            WHERE w.status='unknown' AND wl.video_id = ?
+            WHERE w.status='unknown' AND wl.video_id = ? AND w.user_id=?
             ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC
-        """, [video_id]).fetchall()
+        """, [video_id, _uid()]).fetchall()
     else:
         rows = conn.execute("""
             SELECT w.*,
@@ -608,30 +739,34 @@ def get_unknown_words(video_id=None):
                    r.next_review
             FROM words w
             LEFT JOIN reviews r ON r.item_id = w.id AND r.item_type = 'word'
-            WHERE w.status='unknown'
+            WHERE w.status='unknown' AND w.user_id=?
             ORDER BY COALESCE(r.level, 0) ASC, COALESCE(r.next_review, '2000-01-01') ASC
-        """).fetchall()
+        """, (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def get_known_words():
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM words WHERE status IN ('known','mastered') ORDER BY word").fetchall()
+    rows = conn.execute("SELECT * FROM words WHERE status IN ('known','mastered') AND user_id=? ORDER BY word", (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def mark_word(word_id, status):
     conn = get_conn()
-    conn.execute("UPDATE words SET status=? WHERE id=?", (status, word_id))
+    conn.execute("UPDATE words SET status=? WHERE id=? AND user_id=?", (status, word_id, _uid()))
     conn.commit()
     conn.close()
 
 
 def delete_word(word_id):
-    """모르는 단어 목록 + 복습 목록에서 영구 삭제"""
+    """모르는 단어 목록 + 복습 목록에서 영구 삭제 (현재 사용자 소유만)"""
     conn = get_conn()
+    owned = conn.execute("SELECT 1 FROM words WHERE id=? AND user_id=?", (word_id, _uid())).fetchone()
+    if not owned:
+        conn.close()
+        return
     conn.execute("DELETE FROM reviews WHERE item_type='word' AND item_id=?", (word_id,))
     conn.execute("DELETE FROM words WHERE id=?", (word_id,))
     conn.commit()
@@ -663,18 +798,19 @@ def schedule_review(item_id, item_type, level=0):
     next_review = get_next_review_time(level, now)
     conn = get_conn()
     conn.execute("""
-        INSERT INTO reviews (item_id, item_type, level, next_review, last_review, streak)
-        VALUES (?, ?, ?, ?, ?, 0)
+        INSERT INTO reviews (item_id, item_type, level, next_review, last_review, streak, user_id)
+        VALUES (?, ?, ?, ?, ?, 0, ?)
         ON CONFLICT(item_id, item_type) DO UPDATE SET
             level=excluded.level, next_review=excluded.next_review,
             last_review=excluded.last_review, streak=0
-    """, (item_id, item_type, level, next_review.isoformat(), now.isoformat()))
+    """, (item_id, item_type, level, next_review.isoformat(), now.isoformat(), _uid()))
     conn.commit()
     conn.close()
 
 
 def get_due_reviews(item_type=None, video_id=None):
     now = datetime.now().isoformat()
+    uid = _uid()
     conn = get_conn()
     if item_type == "sentence":
         sql = """
@@ -683,9 +819,9 @@ def get_due_reviews(item_type=None, video_id=None):
             FROM reviews r
             JOIN sentences s ON r.item_id = s.id
             JOIN videos v ON s.video_id = v.id
-            WHERE r.item_type='sentence' AND r.next_review <= ? AND r.level < 7
+            WHERE r.item_type='sentence' AND r.next_review <= ? AND r.level < 7 AND r.user_id=?
         """
-        params = [now]
+        params = [now, uid]
         if video_id:
             sql += " AND s.video_id = ?"
             params.append(video_id)
@@ -695,9 +831,9 @@ def get_due_reviews(item_type=None, video_id=None):
         sql = """
             SELECT r.*, w.word as text
             FROM reviews r JOIN words w ON r.item_id = w.id
-            WHERE r.item_type='word' AND r.next_review <= ? AND r.level < 7
+            WHERE r.item_type='word' AND r.next_review <= ? AND r.level < 7 AND r.user_id=?
         """
-        params = [now]
+        params = [now, uid]
         if video_id:
             sql += " AND w.id IN (SELECT wl.word_id FROM word_video_link wl WHERE wl.video_id = ?)"
             params.append(video_id)
@@ -711,14 +847,14 @@ def get_due_reviews(item_type=None, video_id=None):
             FROM reviews r
             JOIN sentences s ON r.item_id = s.id
             JOIN videos v ON s.video_id = v.id
-            WHERE r.item_type='sentence' AND r.next_review <= ? AND r.level < 7
-        """, (now,)).fetchall()
+            WHERE r.item_type='sentence' AND r.next_review <= ? AND r.level < 7 AND r.user_id=?
+        """, (now, uid)).fetchall()
         rows_w = conn.execute("""
             SELECT r.*, w.word as text, 'word' as display_type,
                    '' as video_title, '' as youtube_video_id
             FROM reviews r JOIN words w ON r.item_id = w.id
-            WHERE r.item_type='word' AND r.next_review <= ? AND r.level < 7
-        """, (now,)).fetchall()
+            WHERE r.item_type='word' AND r.next_review <= ? AND r.level < 7 AND r.user_id=?
+        """, (now, uid)).fetchall()
         rows = list(rows_s) + list(rows_w)
     conn.close()
     return [dict(r) for r in rows]
@@ -726,10 +862,11 @@ def get_due_reviews(item_type=None, video_id=None):
 
 def process_review(item_id, item_type, correct):
     from srs import get_next_review_time
+    uid = _uid()
     conn = get_conn()
     review = conn.execute(
-        "SELECT * FROM reviews WHERE item_id=? AND item_type=?",
-        (item_id, item_type)
+        "SELECT * FROM reviews WHERE item_id=? AND item_type=? AND user_id=?",
+        (item_id, item_type, uid)
     ).fetchone()
 
     now = datetime.now()
@@ -741,25 +878,25 @@ def process_review(item_id, item_type, correct):
         new_streak = 0
         # Mark sentence/word as unknown again
         if item_type == "sentence":
-            conn.execute("UPDATE sentences SET status='unknown' WHERE id=?", (item_id,))
+            conn.execute("UPDATE sentences SET status='unknown' WHERE id=? AND user_id=?", (item_id, uid))
         elif item_type == "word":
-            conn.execute("UPDATE words SET status='unknown' WHERE id=?", (item_id,))
+            conn.execute("UPDATE words SET status='unknown' WHERE id=? AND user_id=?", (item_id, uid))
 
     next_review = get_next_review_time(new_level, now)
 
     if new_level >= 7:
         # Mastered! Remove from review
         if item_type == "sentence":
-            conn.execute("UPDATE sentences SET status='mastered' WHERE id=?", (item_id,))
+            conn.execute("UPDATE sentences SET status='mastered' WHERE id=? AND user_id=?", (item_id, uid))
         elif item_type == "word":
-            conn.execute("UPDATE words SET status='mastered' WHERE id=?", (item_id,))
+            conn.execute("UPDATE words SET status='mastered' WHERE id=? AND user_id=?", (item_id, uid))
 
     conn.execute("""
-        INSERT INTO reviews (item_id, item_type, level, next_review, last_review, streak)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO reviews (item_id, item_type, level, next_review, last_review, streak, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(item_id, item_type) DO UPDATE SET
             level=?, next_review=?, last_review=?, streak=?
-    """, (item_id, item_type, new_level, next_review.isoformat(), now.isoformat(), new_streak,
+    """, (item_id, item_type, new_level, next_review.isoformat(), now.isoformat(), new_streak, uid,
           new_level, next_review.isoformat(), now.isoformat(), new_streak))
     conn.commit()
     conn.close()
@@ -774,38 +911,39 @@ def process_review(item_id, item_type, correct):
 
 def get_stats(video_id=None):
     conn = get_conn()
+    uid = _uid()
     if video_id:
-        vf = " AND video_id = ?"
-        vp = [video_id]
-        total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE 1=1" + vf, vp).fetchone()["c"]
-        known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known'" + vf, vp).fetchone()["c"]
-        unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown'" + vf, vp).fetchone()["c"]
-        mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered'" + vf, vp).fetchone()["c"]
-        new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new'" + vf, vp).fetchone()["c"]
-        total_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE wl.video_id=?", vp).fetchone()["c"]
-        known_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE w.status IN ('known','mastered') AND wl.video_id=?", vp).fetchone()["c"]
-        unknown_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE w.status='unknown' AND wl.video_id=?", vp).fetchone()["c"]
+        vp = [video_id, uid]  # video + user 필터 (sentences.user_id)
+        total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE video_id=? AND user_id=?", vp).fetchone()["c"]
+        known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known' AND video_id=? AND user_id=?", vp).fetchone()["c"]
+        unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown' AND video_id=? AND user_id=?", vp).fetchone()["c"]
+        mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered' AND video_id=? AND user_id=?", vp).fetchone()["c"]
+        new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new' AND video_id=? AND user_id=?", vp).fetchone()["c"]
+        total_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE wl.video_id=? AND w.user_id=?", vp).fetchone()["c"]
+        known_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE w.status IN ('known','mastered') AND wl.video_id=? AND w.user_id=?", vp).fetchone()["c"]
+        unknown_words = conn.execute("SELECT COUNT(DISTINCT w.id) as c FROM words w JOIN word_video_link wl ON wl.word_id=w.id WHERE w.status='unknown' AND wl.video_id=? AND w.user_id=?", vp).fetchone()["c"]
         due_reviews = conn.execute("""SELECT COUNT(*) as c FROM reviews r
             JOIN sentences s ON r.item_id=s.id AND r.item_type='sentence'
-            WHERE r.next_review <= datetime('now') AND r.level < 7 AND s.video_id=?""", vp).fetchone()["c"]
+            WHERE r.next_review <= datetime('now') AND r.level < 7 AND s.video_id=? AND r.user_id=?""", vp).fetchone()["c"]
         sentence_due = due_reviews
         word_due = conn.execute("""SELECT COUNT(*) as c FROM reviews r
             JOIN word_video_link wl ON wl.word_id=r.item_id
-            WHERE r.item_type='word' AND r.next_review <= datetime('now') AND r.level < 7 AND wl.video_id=?""", vp).fetchone()["c"]
+            WHERE r.item_type='word' AND r.next_review <= datetime('now') AND r.level < 7 AND wl.video_id=? AND r.user_id=?""", vp).fetchone()["c"]
         total_videos = 1
     else:
-        total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences").fetchone()["c"]
-        known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known'").fetchone()["c"]
-        unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown'").fetchone()["c"]
-        mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered'").fetchone()["c"]
-        new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new'").fetchone()["c"]
-        total_words = conn.execute("SELECT COUNT(*) as c FROM words").fetchone()["c"]
-        known_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status IN ('known','mastered')").fetchone()["c"]
-        unknown_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown'").fetchone()["c"]
-        due_reviews = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE next_review <= datetime('now') AND level < 7").fetchone()["c"]
-        total_videos = conn.execute("SELECT COUNT(*) as c FROM videos").fetchone()["c"]
-        sentence_due = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE item_type='sentence' AND next_review <= datetime('now') AND level < 7").fetchone()["c"]
-        word_due = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE item_type='word' AND next_review <= datetime('now') AND level < 7").fetchone()["c"]
+        up = [uid]
+        total_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE user_id=?", up).fetchone()["c"]
+        known_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='known' AND user_id=?", up).fetchone()["c"]
+        unknown_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='unknown' AND user_id=?", up).fetchone()["c"]
+        mastered_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='mastered' AND user_id=?", up).fetchone()["c"]
+        new_sentences = conn.execute("SELECT COUNT(*) as c FROM sentences WHERE status='new' AND user_id=?", up).fetchone()["c"]
+        total_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE user_id=?", up).fetchone()["c"]
+        known_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status IN ('known','mastered') AND user_id=?", up).fetchone()["c"]
+        unknown_words = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown' AND user_id=?", up).fetchone()["c"]
+        due_reviews = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE next_review <= datetime('now') AND level < 7 AND user_id=?", up).fetchone()["c"]
+        total_videos = conn.execute("SELECT COUNT(*) as c FROM videos WHERE user_id=?", up).fetchone()["c"]
+        sentence_due = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE item_type='sentence' AND next_review <= datetime('now') AND level < 7 AND user_id=?", up).fetchone()["c"]
+        word_due = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE item_type='word' AND next_review <= datetime('now') AND level < 7 AND user_id=?", up).fetchone()["c"]
 
     conn.close()
     return {
@@ -828,14 +966,15 @@ def get_stats(video_id=None):
 def get_due_review_counts():
     """Returns separate due counts for sentences and words."""
     now = datetime.now().isoformat()
+    uid = _uid()
     conn = get_conn()
     sentence_count = conn.execute(
-        "SELECT COUNT(*) as c FROM reviews WHERE item_type='sentence' AND next_review <= ? AND level < 7",
-        (now,)
+        "SELECT COUNT(*) as c FROM reviews WHERE item_type='sentence' AND next_review <= ? AND level < 7 AND user_id=?",
+        (now, uid)
     ).fetchone()["c"]
     word_count = conn.execute(
-        "SELECT COUNT(*) as c FROM reviews WHERE item_type='word' AND next_review <= ? AND level < 7",
-        (now,)
+        "SELECT COUNT(*) as c FROM reviews WHERE item_type='word' AND next_review <= ? AND level < 7 AND user_id=?",
+        (now, uid)
     ).fetchone()["c"]
     conn.close()
     return {"sentence_due": sentence_count, "word_due": word_count}
@@ -844,24 +983,27 @@ def get_due_review_counts():
 def get_analytics(video_id=None):
     """Returns analytics data for charts. If video_id is given, filter by that content."""
     conn = get_conn()
-    vid_filter_s = " AND s.video_id = ?" if video_id else ""
-    vid_filter_s2 = " AND s.video_id = ?" if video_id else ""
-    vid_params = [video_id] if video_id else []
+    uid = _uid()
+    # 항상 사용자 필터를 적용하고, video_id가 주어지면 추가로 필터 (s. alias 기준)
+    vid_filter_s = " AND s.user_id=?" + (" AND s.video_id=?" if video_id else "")
+    def sp():
+        return [uid, video_id] if video_id else [uid]
+    vid_filter_s2 = vid_filter_s
 
     # 1. Overall mastery distribution (donut chart)
-    mastered = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='mastered'" + vid_filter_s, vid_params).fetchone()["c"]
-    known = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='known'" + vid_filter_s, vid_params).fetchone()["c"]
+    mastered = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='mastered'" + vid_filter_s, sp()).fetchone()["c"]
+    known = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='known'" + vid_filter_s, sp()).fetchone()["c"]
     learning = conn.execute("""
         SELECT COUNT(*) as c FROM sentences s
         JOIN reviews r ON r.item_id = s.id AND r.item_type='sentence'
         WHERE s.status='unknown' AND r.level > 0
-    """ + vid_filter_s, vid_params).fetchone()["c"]
+    """ + vid_filter_s, sp()).fetchone()["c"]
     frequently_wrong = conn.execute("""
         SELECT COUNT(*) as c FROM reviews r
         JOIN sentences s ON r.item_id = s.id AND r.item_type='sentence'
         WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND s.status='unknown'
-    """ + vid_filter_s2, vid_params).fetchone()["c"]
-    total_unknown = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='unknown'" + vid_filter_s, vid_params).fetchone()["c"]
+    """ + vid_filter_s2, sp()).fetchone()["c"]
+    total_unknown = conn.execute("SELECT COUNT(*) as c FROM sentences s WHERE status='unknown'" + vid_filter_s, sp()).fetchone()["c"]
     pure_unknown = max(0, total_unknown - learning - frequently_wrong)
 
     mastery_distribution = {
@@ -882,9 +1024,10 @@ def get_analytics(video_id=None):
                SUM(CASE WHEN s.status='new' THEN 1 ELSE 0 END) as new_count
         FROM videos v
         LEFT JOIN sentences s ON v.id = s.video_id
+        WHERE v.user_id=?
         GROUP BY v.id
         ORDER BY v.created_at DESC
-    """).fetchall()
+    """, (uid,)).fetchall()
     content_progress = [dict(r) for r in content_progress]
 
     # 3. Learning progress over time (line chart - last 30 days, 문장/단어 분리)
@@ -897,19 +1040,19 @@ def get_analytics(video_id=None):
         daily_raw = conn.execute("""
             SELECT DATE(created_at) as day, item_type, COUNT(*) as count
             FROM study_log
-            WHERE DATE(created_at) >= DATE('now', '-30 days')
+            WHERE DATE(created_at) >= DATE('now', '-30 days') AND user_id=?
             GROUP BY DATE(created_at), item_type
             ORDER BY day
-        """).fetchall()
+        """, (uid,)).fetchall()
     else:
         daily_raw = conn.execute("""
             SELECT DATE(last_review) as day, item_type, COUNT(*) as count
             FROM reviews
             WHERE last_review IS NOT NULL
-              AND DATE(last_review) >= DATE('now', '-30 days')
+              AND DATE(last_review) >= DATE('now', '-30 days') AND user_id=?
             GROUP BY DATE(last_review), item_type
         ORDER BY day
-    """).fetchall()
+    """, (uid,)).fetchall()
     daily_map = {}
     for row in daily_raw:
         day = row["day"]
@@ -926,10 +1069,10 @@ def get_analytics(video_id=None):
     srs_raw = conn.execute("""
         SELECT r.item_type, r.level, COUNT(*) as count
         FROM reviews r
-        WHERE r.level < 7
+        WHERE r.level < 7 AND r.user_id=?
         GROUP BY r.item_type, r.level
         ORDER BY r.level, r.item_type
-    """).fetchall()
+    """, (uid,)).fetchall()
     # 레벨별로 문장/단어 수 합산
     srs_map = {}
     for row in srs_raw:
@@ -945,24 +1088,24 @@ def get_analytics(video_id=None):
     # 5. Word mastery distribution
     if video_id:
         word_mastered = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM words w
-            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='mastered' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='mastered' AND wl.video_id=? AND w.user_id=?""", [video_id, uid]).fetchone()["c"]
         word_known = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM words w
-            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='known' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='known' AND wl.video_id=? AND w.user_id=?""", [video_id, uid]).fetchone()["c"]
         word_unknown = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM words w
-            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='unknown' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+            JOIN word_video_link wl ON wl.word_id = w.id WHERE w.status='unknown' AND wl.video_id=? AND w.user_id=?""", [video_id, uid]).fetchone()["c"]
         word_freq_wrong = conn.execute("""SELECT COUNT(DISTINCT w.id) as c FROM reviews r
             JOIN words w ON r.item_id = w.id AND r.item_type='word'
             JOIN word_video_link wl ON wl.word_id = w.id
-            WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown' AND wl.video_id=?""", [video_id]).fetchone()["c"]
+            WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown' AND wl.video_id=? AND w.user_id=?""", [video_id, uid]).fetchone()["c"]
     else:
-        word_mastered = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='mastered'").fetchone()["c"]
-        word_known = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='known'").fetchone()["c"]
-        word_unknown = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown'").fetchone()["c"]
+        word_mastered = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='mastered' AND user_id=?", (uid,)).fetchone()["c"]
+        word_known = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='known' AND user_id=?", (uid,)).fetchone()["c"]
+        word_unknown = conn.execute("SELECT COUNT(*) as c FROM words WHERE status='unknown' AND user_id=?", (uid,)).fetchone()["c"]
         word_freq_wrong = conn.execute("""
             SELECT COUNT(*) as c FROM reviews r
             JOIN words w ON r.item_id = w.id AND r.item_type='word'
-            WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown'
-        """).fetchone()["c"]
+            WHERE r.streak = 0 AND r.level = 0 AND r.last_review IS NOT NULL AND w.status='unknown' AND w.user_id=?
+        """, (uid,)).fetchone()["c"]
 
     word_distribution = {
         "mastered": word_mastered,
@@ -988,11 +1131,11 @@ def add_playlist(playlist_id, title, url, category_id=None):
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO playlists (playlist_id, title, url, category_id) VALUES (?,?,?,?)",
-            (playlist_id, title, url, category_id)
+            "INSERT OR IGNORE INTO playlists (playlist_id, title, url, category_id, user_id) VALUES (?,?,?,?,?)",
+            (playlist_id, title, url, category_id, _uid())
         )
         conn.commit()
-        row = conn.execute("SELECT id FROM playlists WHERE playlist_id=?", (playlist_id,)).fetchone()
+        row = conn.execute("SELECT id FROM playlists WHERE playlist_id=? AND user_id=?", (playlist_id, _uid())).fetchone()
         return row["id"] if row else None
     finally:
         conn.close()
@@ -1005,8 +1148,9 @@ def get_playlists():
                (SELECT COUNT(*) FROM playlist_videos pv WHERE pv.playlist_id = p.id) as video_count
         FROM playlists p
         LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.user_id=?
         ORDER BY p.created_at DESC
-    """).fetchall()
+    """, (_uid(),)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -1017,8 +1161,8 @@ def get_playlist(pl_id):
         SELECT p.*, c.name as category_name
         FROM playlists p
         LEFT JOIN categories c ON p.category_id = c.id
-        WHERE p.id=?
-    """, (pl_id,)).fetchone()
+        WHERE p.id=? AND p.user_id=?
+    """, (pl_id, _uid())).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -1026,7 +1170,7 @@ def get_playlist(pl_id):
 def delete_playlist(pl_id):
     conn = get_conn()
     try:
-        conn.execute("DELETE FROM playlists WHERE id=?", (pl_id,))
+        conn.execute("DELETE FROM playlists WHERE id=? AND user_id=?", (pl_id, _uid()))
         conn.commit()
     finally:
         conn.close()
@@ -1037,7 +1181,7 @@ def update_playlist(pl_id, **kwargs):
     try:
         for key, val in kwargs.items():
             if key in ('enabled', 'category_id', 'title'):
-                conn.execute(f"UPDATE playlists SET {key}=? WHERE id=?", (val, pl_id))
+                conn.execute(f"UPDATE playlists SET {key}=? WHERE id=? AND user_id=?", (val, pl_id, _uid()))
         conn.commit()
     finally:
         conn.close()
@@ -1046,13 +1190,15 @@ def update_playlist(pl_id, **kwargs):
 def update_playlist_last_checked(pl_id, last_checked):
     conn = get_conn()
     try:
-        conn.execute("UPDATE playlists SET last_checked=? WHERE id=?", (last_checked, pl_id))
+        conn.execute("UPDATE playlists SET last_checked=? WHERE id=? AND user_id=?", (last_checked, pl_id, _uid()))
         conn.commit()
     finally:
         conn.close()
 
 
 def get_enabled_playlists():
+    """모든 사용자의 활성 플레이리스트 반환 (백그라운드 동기화 워커용).
+    user_id를 포함하므로 워커가 소유자별로 set_current_user() 할 수 있다."""
     conn = get_conn()
     rows = conn.execute("SELECT * FROM playlists WHERE enabled=1").fetchall()
     conn.close()

@@ -38,11 +38,19 @@ def _require_login():
     path = request.path
     if path == "/login" or path.startswith(_PUBLIC_PREFIXES):
         return None
-    if not session.get("user_id"):
+    uid = session.get("user_id")
+    if not uid:
         if path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect("/login")
+    # 이후 모든 DB 호출이 이 사용자로 자동 격리되도록 컨텍스트 설정
+    db.set_current_user(uid)
     return None
+
+
+@app.teardown_request
+def _clear_user(exc=None):
+    db.clear_current_user()
 
 
 def current_user():
@@ -309,6 +317,10 @@ def api_signup():
     )
     if not user:
         return jsonify({"error": "가입에 실패했습니다."}), 500
+
+    # 첫 가입자는 기존 단일 사용자 데이터(소유자 없는 데이터)를 인수한다.
+    if db.count_users() == 1:
+        db.claim_orphan_data(user["id"])
 
     session["user_id"] = user["id"]
     return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
@@ -1153,14 +1165,19 @@ def sync_single_playlist(pl_id):
 
 
 def sync_all_playlists():
-    """Sync all enabled playlists."""
+    """Sync all enabled playlists (모든 사용자). 각 플레이리스트의 소유자로
+    컨텍스트를 설정해, 새로 추가되는 영상이 소유자에게 귀속되도록 한다."""
     global last_sync_time
     playlists = db.get_enabled_playlists()
     results = []
     for pl in playlists:
-        result = sync_single_playlist(pl["id"])
-        result["playlist_title"] = pl["title"]
-        results.append(result)
+        try:
+            db.set_current_user(pl.get("user_id"))
+            result = sync_single_playlist(pl["id"])
+            result["playlist_title"] = pl["title"]
+            results.append(result)
+        finally:
+            db.clear_current_user()
     last_sync_time = datetime.now().isoformat()
     return results
 

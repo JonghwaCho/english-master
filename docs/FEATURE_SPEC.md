@@ -2,8 +2,16 @@
 
 ## 0. 사용자 인증 (멀티유저)
 
-> 상용 서비스 전환을 위한 인증 시스템. **Step 1(현재)**: 이메일/비밀번호 인증 완료.
-> **Step 2(예정)**: 데이터 `user_id` 분리. **Step 3(예정)**: 구글 로그인, 사용자별 AI 키.
+> 상용 서비스 전환을 위한 인증 시스템. **Step 1 완료**: 이메일/비밀번호 인증.
+> **Step 2 완료**: 데이터 `user_id` 완전 격리. **Step 3(예정)**: 구글 로그인, 사용자별 AI 키.
+
+### F-0.4 사용자별 데이터 격리 (Step 2)
+- **대상 테이블**: `videos`, `categories`, `playlists`, `words`, `sentences`, `reviews`, `study_log`에 `user_id` 부여
+- **UNIQUE 재정의**: `videos(user_id,url)`, `words(user_id,word)`, `categories(user_id,name)`, `playlists(user_id,playlist_id)` — 같은 콘텐츠도 사용자별 독립 보관
+- **전역 공유 유지**: `word_meanings`, `ai_cache` (내용 기반 캐시)
+- **격리 방식**: `database.set_current_user()`를 요청마다(`before_request`) 설정 → 모든 DB 함수가 `_uid()`로 자동 필터. 백그라운드 동기화 워커는 플레이리스트 소유자로 컨텍스트 설정
+- **기존 데이터 이관**: 첫 가입자가 `claim_orphan_data()`로 소유자 없는 기존 데이터를 인수
+- **검증**: 마이그레이션 데이터 보존, 첫 사용자 인수, 신규 사용자 격리, 양방향 격리, 교차 접근 차단 모두 확인
 
 ### F-0.1 회원가입 / 로그인
 - **엔드포인트**: `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
@@ -364,6 +372,7 @@ process_review(item_id, item_type, correct):
 | v1.1 | 2026-04-07 | 반응형 UI, 글래스모피즘, 리스닝 모드, 점진적 단어 노출, 전체학습 큐 재생 |
 | v1.1.1 | 2026-04-08 | 모르는 문장 시각적 리셋 + unknown_count 누적 카운트 |
 | v1.2 | 2026-07-06 | 클라우드 배포(Fly.io) + 이메일/비밀번호 인증(Step 1) — 회원가입/로그인/로그아웃, 인증 게이트, users 테이블 |
+| v1.3 | 2026-07-06 | 멀티유저 데이터 완전 격리(Step 2) — 7개 테이블 user_id, 복합 UNIQUE 재구축, 요청별 사용자 컨텍스트, 첫 가입자 기존 데이터 인수 |
 
 ---
 

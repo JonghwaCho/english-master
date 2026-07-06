@@ -250,8 +250,9 @@ backdrop-filter: blur(12px)
   - `SECRET_KEY` 환경변수로 세션 서명 (프로덕션 필수 — 미지정 시 재시작마다 세션 무효화)
   - `@app.before_request` 전역 게이트로 모든 페이지/API 보호 (`/login`, `/api/auth/*` 제외)
 - AI API 키는 서버 측 저장 (클라이언트 노출 없음)
-- **미해결(Step 2 예정)**: 데이터가 아직 `user_id`로 분리되지 않아, 로그인한 모든 사용자가
-  동일 데이터를 공유함 → **실제 다중 사용자 초대 전에 Step 2(데이터 격리) 필수**
+- **데이터 격리 완료(Step 2)**: 7개 테이블에 `user_id` 부여 + 복합 UNIQUE 재구축.
+  요청마다 `db.set_current_user()`로 컨텍스트 설정 → 모든 DB 함수가 `_uid()`로 자동 필터.
+  교차 사용자 접근 차단 검증됨. `word_meanings`/`ai_cache`만 전역 공유(내용 기반).
 - HTTPS 강제 (Fly.io `force_https`)
 
 ## 10. 성능 최적화
@@ -300,4 +301,4 @@ backdrop-filter: blur(12px)
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-07-06 (클라우드 배포 + 사용자 인증 Step 1 추가)*
+*최종 업데이트: 2026-07-06 (클라우드 배포 + 인증 Step 1 + 데이터 격리 Step 2)*
