@@ -23,6 +23,18 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
+# ── 커밋 작성자 자동 통일 ────────────────────────────
+# 회사/집 어느 PC에서든 이 스크립트를 실행하면 이 저장소의 커밋 작성자를
+# 아래 값으로 자동 설정한다. (한 번 설정하는 것을 잊어도 자동으로 맞춰짐)
+WANT_NAME="조종화"
+WANT_EMAIL="joe@nablecomm.com"
+if [ "$(git config user.email 2>/dev/null)" != "$WANT_EMAIL" ] || \
+   [ "$(git config user.name 2>/dev/null)" != "$WANT_NAME" ]; then
+  git config user.name  "$WANT_NAME"
+  git config user.email "$WANT_EMAIL"
+  echo "${G}✓ 커밋 작성자를 이 저장소용으로 설정했습니다: ${WANT_NAME} <${WANT_EMAIL}>${N}"
+fi
+
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "${BOLD}${B}▶ 저장소:${N} $(basename "$(git rev-parse --show-toplevel)")   ${BOLD}${B}브랜치:${N} ${BRANCH}"
 echo "──────────────────────────────────────────────"
