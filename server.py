@@ -1538,6 +1538,10 @@ def sync_single_playlist(pl_id):
     new_count = 0
     errors = []
 
+    # 정책(의도적): 플레이리스트로 추가되는 영상은 콘텐츠 등록 할당량에 포함하지 않는다.
+    # → 여기서는 일부러 _finalize_registration/record_content_registration을 호출하지 않는다.
+    #   (수동 등록 5경로에만 한도를 적용한다.) 자세한 이유는 docs/DECISION_LOG.md 참조.
+    #   ⚠ 이는 버그가 아니라 결정된 정책이다. 무료 우회 남용이 문제되면 그때 재검토.
     for entry in entries:
         if entry["video_id"] in existing_ids:
             continue

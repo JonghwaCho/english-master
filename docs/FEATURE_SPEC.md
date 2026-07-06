@@ -30,7 +30,7 @@
 - **카운트 기준(중요)**: "월 신규 등록 수". 콘텐츠를 받아와 **전체학습/개별학습이 가능한 상태로 등록되는 시점**(`_finalize_registration`)에 1개 소비. `content_registrations` 원장에 `(user_id, video_id)` 멱등 기록 → **영상을 삭제해도 카운트는 복구되지 않음**. 같은 콘텐츠 재등록은 소비 없음
 - **주기**: free는 `period_type='lifetime'`(평생 누적), 유료는 `monthly` — **구독 시작일(plan_started_at) 기준 매월 리셋**. 관리자가 요금제를 변경하면 구독 시작일이 그 시점으로 갱신됨
 - **한도 강제**: 등록 시 한도 초과분은 방금 만든 콘텐츠를 롤백(삭제)하고 `402 {error:"quota_exceeded", message, usage}` 반환. 프론트는 안내 문구 토스트 + 사이드바 사용량 배지 갱신
-- **적용 경로**: YouTube 추가, 가사 추가, 텍스트/URL/파일 콘텐츠 등 사용자 등록 경로 5종. *(현재 범위 제외: 플레이리스트 자동 동기화로 추가되는 영상 — 추후 정책 결정)*
+- **적용 경로**: YouTube 추가, 가사 추가, 텍스트/URL/파일 콘텐츠 등 사용자 등록 경로 5종. **플레이리스트 자동 동기화로 추가되는 영상은 의도적으로 할당량에 포함하지 않는다**(무제한 — 결정됨, DECISION_LOG 참조. 무료 우회 리스크를 감수)
 - **API**: `GET /api/me/plan`(내 사용량+요금제), 관리자 `GET /api/admin/plans`·`PUT /api/admin/plans/<code>`(가격·한도)·`PUT /api/admin/users/<id>/plan`(요금제 부여). PG(실결제) 연동은 다음 단계 — 현재는 관리자 수동 부여
 - **users 추가 컬럼**: `plan_code`(기본 'free'), `plan_started_at`(구독 시작일)
 
