@@ -27,8 +27,17 @@ python3 server.py
 
 ### 필요 환경
 - Python 3.8+
-- Flask, youtube-transcript-api
+- Flask, youtube-transcript-api, gunicorn
 - 모던 브라우저 (Chrome, Safari, Firefox)
+
+### 로그인 / 회원가입
+접속하면 로그인 화면이 먼저 나타납니다.
+1. **회원가입** 탭 → 이메일 + 비밀번호(8자 이상) 입력 → 가입과 동시에 로그인됨
+2. 이후에는 **로그인** 탭에서 같은 이메일/비밀번호로 접속
+3. 로그아웃: 좌측 사이드바 하단의 **로그아웃** 버튼
+4. 구글 로그인은 준비 중입니다.
+
+> 클라우드 버전은 https://english-master.fly.dev 에서 접속할 수 있습니다.
 
 ---
 

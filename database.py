@@ -3,7 +3,12 @@ import os
 import hashlib
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "english_master.db")
+# 데이터 저장 경로: 로컬은 프로젝트 내 data/, 클라우드 배포 시 DATA_DIR 환경변수로
+# 영구 볼륨(예: /data)을 지정한다.
+DATA_DIR = os.environ.get(
+    "DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+)
+DB_PATH = os.path.join(DATA_DIR, "english_master.db")
 
 
 def get_conn():
@@ -178,8 +183,86 @@ def init_db():
         conn.execute("UPDATE sentences SET unknown_count = 1 WHERE status = 'unknown' AND unknown_count = 0")
         conn.commit()
 
+    # ── 사용자 인증 테이블 (멀티유저) ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT,           -- 이메일 가입 시 사용. OAuth 전용 계정은 NULL
+            name TEXT DEFAULT '',
+            google_id TEXT UNIQUE,        -- 구글 로그인 연동 시
+            ai_provider TEXT DEFAULT '',  -- 사용자별 AI 설정 (없으면 서버 공용 키로 폴백)
+            ai_key TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     conn.commit()
     conn.close()
+
+
+# ── Users (인증) ────────────────────────────────────────
+
+def create_user(email, password_hash=None, name="", google_id=None):
+    """새 사용자 생성. 성공 시 dict 반환, 이메일 중복 시 None."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (email, password_hash, name, google_id) VALUES (?, ?, ?, ?)",
+            (email.lower().strip(), password_hash, name, google_id),
+        )
+        conn.commit()
+        uid = cur.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+    finally:
+        conn.close()
+    return get_user_by_id(uid)
+
+
+def get_user_by_id(user_id):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_email(email):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_google_id(google_id):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE google_id = ?", (google_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def link_google_id(user_id, google_id):
+    conn = get_conn()
+    conn.execute("UPDATE users SET google_id = ? WHERE id = ?", (google_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_user_ai_settings(user_id, provider, ai_key):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET ai_provider = ?, ai_key = ? WHERE id = ?",
+        (provider, ai_key, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def count_users():
+    conn = get_conn()
+    n = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+    conn.close()
+    return n
 
 
 def log_study_activity(item_id, item_type, action, correct=None):

@@ -1,5 +1,29 @@
 # English Master v1.1 - 기능 명세서
 
+## 0. 사용자 인증 (멀티유저)
+
+> 상용 서비스 전환을 위한 인증 시스템. **Step 1(현재)**: 이메일/비밀번호 인증 완료.
+> **Step 2(예정)**: 데이터 `user_id` 분리. **Step 3(예정)**: 구글 로그인, 사용자별 AI 키.
+
+### F-0.1 회원가입 / 로그인
+- **엔드포인트**: `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
+- **비밀번호**: werkzeug `pbkdf2:sha256` 해싱 저장 (평문 저장 안 함)
+- **세션**: Flask 서명 쿠키 (`SECRET_KEY` 환경변수로 서명)
+- **검증**: 이메일 형식, 비밀번호 8자 이상, 이메일 중복(409)
+- **UI**: `templates/login.html` — 로그인/회원가입 탭 전환, 구글 버튼(준비 중 비활성)
+
+### F-0.2 인증 게이트
+- `@app.before_request`로 전역 적용
+- 예외 경로: `/login`, `/api/auth/*`, `/static/*`, `/health`
+- 미로그인 시: 페이지 요청 → `/login` 리다이렉트, API 요청 → `401 unauthorized`
+
+### F-0.3 users 테이블
+`id, email(unique), password_hash, name, google_id(unique), ai_provider, ai_key, created_at`
+- `password_hash`는 OAuth 전용 계정에서 NULL 허용
+- `ai_provider`/`ai_key`: 사용자별 AI 설정 (미설정 시 서버 공용 키로 폴백 — Step 3)
+
+---
+
 ## 1. 콘텐츠 관리 시스템
 
 ### F-1.1 YouTube 영상 추가
@@ -339,6 +363,7 @@ process_review(item_id, item_type, correct):
 | v1.0 | 2026-04-06 | 초기 릴리즈 - 콘텐츠 필터, 간소화 UI, 사이드바 개편 |
 | v1.1 | 2026-04-07 | 반응형 UI, 글래스모피즘, 리스닝 모드, 점진적 단어 노출, 전체학습 큐 재생 |
 | v1.1.1 | 2026-04-08 | 모르는 문장 시각적 리셋 + unknown_count 누적 카운트 |
+| v1.2 | 2026-07-06 | 클라우드 배포(Fly.io) + 이메일/비밀번호 인증(Step 1) — 회원가입/로그인/로그아웃, 인증 게이트, users 테이블 |
 
 ---
 

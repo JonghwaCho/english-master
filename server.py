@@ -12,7 +12,9 @@ import urllib.request
 import urllib.parse
 import json as json_lib
 from datetime import datetime
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, session, redirect
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 import database as db
 import youtube_service as yt
@@ -21,6 +23,31 @@ from queue import Queue
 from srs import get_level_name, format_next_review
 
 app = Flask(__name__)
+# 세션 서명 키. 프로덕션에서는 반드시 SECRET_KEY 환경변수로 고정된 값을 지정할 것
+# (미지정 시 재시작마다 세션이 무효화됨). Fly: `fly secrets set SECRET_KEY=...`
+app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
+
+
+# ── 인증 게이트 ─────────────────────────────────────────
+# 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
+_PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health")
+
+
+@app.before_request
+def _require_login():
+    path = request.path
+    if path == "/login" or path.startswith(_PUBLIC_PREFIXES):
+        return None
+    if not session.get("user_id"):
+        if path.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect("/login")
+    return None
+
+
+def current_user():
+    uid = session.get("user_id")
+    return db.get_user_by_id(uid) if uid else None
 
 # ── 단어 뜻 번역 백그라운드 큐 ──────────────────────────
 meaning_queue = Queue()
@@ -243,6 +270,76 @@ def add_no_cache(response):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/login")
+def login_page():
+    # 이미 로그인돼 있으면 앱으로
+    if session.get("user_id"):
+        return redirect("/")
+    return render_template("login.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+# ── API: Auth ───────────────────────────────────────────
+
+@app.route("/api/auth/signup", methods=["POST"])
+def api_signup():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    name = (data.get("name") or "").strip()
+
+    if not email or "@" not in email:
+        return jsonify({"error": "올바른 이메일을 입력하세요."}), 400
+    if len(password) < 8:
+        return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+    if db.get_user_by_email(email):
+        return jsonify({"error": "이미 가입된 이메일입니다."}), 409
+
+    user = db.create_user(
+        email=email,
+        # pbkdf2:sha256 은 모든 환경의 hashlib에서 지원됨 (scrypt는 일부 빌드에 없음)
+        password_hash=generate_password_hash(password, method="pbkdf2:sha256"),
+        name=name,
+    )
+    if not user:
+        return jsonify({"error": "가입에 실패했습니다."}), 500
+
+    session["user_id"] = user["id"]
+    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    user = db.get_user_by_email(email)
+    if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+
+    session["user_id"] = user["id"]
+    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_me():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
 
 
 # ── API: Categories ────────────────────────────────────
@@ -1085,7 +1182,7 @@ def _background_sync_loop():
 # ── API: AI Integration ─────────────────────────────────
 # Gemini / Claude / ChatGPT 연동 프록시
 
-AI_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ai_settings.json")
+AI_SETTINGS_FILE = os.path.join(db.DATA_DIR, "ai_settings.json")
 
 
 def load_ai_settings():
@@ -1481,22 +1578,34 @@ def _call_ai_once(provider, api_key, prompt):
         raise ValueError("AI 서비스가 선택되지 않았습니다. 설정에서 선택해주세요.")
 
 
-# ── Main ────────────────────────────────────────────────
+# ── App initialization (import 시점에 실행 → gunicorn 등 WSGI 서버에서도 동작) ──
+# gunicorn은 `__main__`을 실행하지 않으므로, DB 초기화와 백그라운드 스레드는
+# 모듈 로드 시점에 시작해야 한다.
+
+def init_app():
+    db.init_db()
+    # 플레이리스트 자동 동기화 스레드 (다중 워커 환경에서는 ENABLE_SYNC=0으로 끌 수 있음)
+    if os.environ.get("ENABLE_SYNC", "1") == "1":
+        threading.Thread(target=_background_sync_loop, daemon=True).start()
+
+
+init_app()
+
+
+# ── Main (로컬 개발 전용) ────────────────────────────────
 
 def open_browser():
-    webbrowser.open("http://127.0.0.1:5294")
+    webbrowser.open(f"http://127.0.0.1:{os.environ.get('PORT', '5294')}")
 
 
 if __name__ == "__main__":
-    db.init_db()
+    port = int(os.environ.get("PORT", "5294"))
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
     print("\n  ╔══════════════════════════════════════╗")
-    print("  ║   English Master 영어 마스터 v1.0     ║")
-    print("  ║   http://127.0.0.1:5294              ║")
+    print("  ║   English Master 영어 마스터          ║")
+    print(f"  ║   http://127.0.0.1:{port}              ║")
     print("  ╚══════════════════════════════════════╝\n")
 
-    # Start background playlist sync thread
-    sync_thread = threading.Thread(target=_background_sync_loop, daemon=True)
-    sync_thread.start()
-
-    threading.Timer(1.0, open_browser).start()
-    app.run(host="127.0.0.1", port=5294, debug=True, use_reloader=False)
+    if os.environ.get("OPEN_BROWSER", "1") == "1":
+        threading.Timer(1.0, open_browser).start()
+    app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)

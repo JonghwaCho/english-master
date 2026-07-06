@@ -400,7 +400,11 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
       <option value="">기본 음성</option>
     </select>
   </div>
-  <div class="sidebar-footer">Ebbinghaus Spaced Repetition</div>
+  <div class="sidebar-footer">
+    <div id="user-info" style="margin-bottom:8px; color:var(--text2); font-size:12px; word-break:break-all;"></div>
+    <button onclick="logout()" style="width:100%; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text3); font-size:12px; cursor:pointer;">로그아웃</button>
+    <div style="margin-top:10px;">Ebbinghaus Spaced Repetition</div>
+  </div>
 </nav>
 
 <!-- Main Content -->
@@ -6160,6 +6164,21 @@ document.addEventListener('click', function(e) {
   e.stopPropagation();
   pickQuizOpt(btn, btn.dataset.qid, btn.dataset.next);
 });
+
+// ── Auth: 사용자 정보 표시 + 로그아웃 ───────────────────
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+  window.location.href = '/login';
+}
+fetch('/api/auth/me')
+  .then(function(r) { return r.ok ? r.json() : null; })
+  .then(function(u) {
+    if (u) {
+      var el = document.getElementById('user-info');
+      if (el) el.textContent = '👤 ' + (u.name || u.email);
+    }
+  })
+  .catch(function() {});
 
 // ── Init ───────────────────────────────────────────────
 loadDashboard().catch(function(e) { console.error('Dashboard init error:', e); });

@@ -20,3 +20,6 @@ build/
 # Environment
 .env
 venv/
+
+# Fly CI (workflow scope 없어 푸시 불가 — 필요 시 gh auth refresh -s workflow 후 커밋)
+.github/workflows/fly-deploy.yml
