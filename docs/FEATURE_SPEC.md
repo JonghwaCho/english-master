@@ -3,7 +3,19 @@
 ## 0. 사용자 인증 (멀티유저)
 
 > 상용 서비스 전환을 위한 인증 시스템. **Step 1 완료**: 이메일/비밀번호 인증.
-> **Step 2 완료**: 데이터 `user_id` 완전 격리. **Step 3(예정)**: 구글 로그인, 사용자별 AI 키.
+> **Step 2 완료**: 데이터 `user_id` 완전 격리. **Step 3 완료**: 구글 로그인 + 사용자별 AI 키.
+
+### F-0.5 구글 OAuth 로그인 (Step 3)
+- **흐름**: `/api/auth/google`(state CSRF 토큰 + 구글 인증 URL 리다이렉트) → `/api/auth/google/callback`(code→token 교환→userinfo 조회→계정 연결/생성→세션)
+- **계정 매칭**: `google_id`로 조회 → 없으면 동일 이메일 계정에 `google_id` 연결 → 둘 다 없으면 신규 생성(비밀번호 NULL)
+- **설정**: 환경변수 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`(+선택 `GOOGLE_REDIRECT_URI`). 미설정 시 로그인 화면 구글 버튼 비활성("준비 중")
+- **구현**: 표준 라이브러리(urllib)만 사용, 외부 의존성 없음
+
+### F-0.6 사용자별 AI 키 (Step 3)
+- **정책(둘 다 지원)**: 개인 키 설정 시 개인 키 사용, 미설정 시 **서버 공용 키로 폴백**
+- **저장**: `users.ai_provider`/`ai_key` (사용자별). `/api/ai/settings` GET/POST가 현재 사용자 기준으로 동작
+- **서버 공용 키**: 환경변수 `SERVER_AI_PROVIDER`/`SERVER_AI_KEY`(우선) → `ai_settings.json`(폴백)
+- **키 사용처 구분**: 배경 워커(전역 캐시 word_meanings/ai_cache 생성)는 **서버 키**, 상호작용 요청(직독직해·퀴즈·단어뜻 등)은 **사용자 키 우선**
 
 ### F-0.4 사용자별 데이터 격리 (Step 2)
 - **대상 테이블**: `videos`, `categories`, `playlists`, `words`, `sentences`, `reviews`, `study_log`에 `user_id` 부여
@@ -373,6 +385,7 @@ process_review(item_id, item_type, correct):
 | v1.1.1 | 2026-04-08 | 모르는 문장 시각적 리셋 + unknown_count 누적 카운트 |
 | v1.2 | 2026-07-06 | 클라우드 배포(Fly.io) + 이메일/비밀번호 인증(Step 1) — 회원가입/로그인/로그아웃, 인증 게이트, users 테이블 |
 | v1.3 | 2026-07-06 | 멀티유저 데이터 완전 격리(Step 2) — 7개 테이블 user_id, 복합 UNIQUE 재구축, 요청별 사용자 컨텍스트, 첫 가입자 기존 데이터 인수 |
+| v1.4 | 2026-07-06 | Step 3 — 구글 OAuth 로그인, 사용자별 AI 키(서버 공용 키 폴백) |
 
 ---
 

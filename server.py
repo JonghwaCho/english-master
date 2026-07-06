@@ -27,6 +27,10 @@ app = Flask(__name__)
 # (미지정 시 재시작마다 세션이 무효화됨). Fly: `fly secrets set SECRET_KEY=...`
 app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
 
+# 구글 OAuth 설정 (Google Cloud Console에서 발급 → fly secrets로 주입)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
 
 # ── 인증 게이트 ─────────────────────────────────────────
 # 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
@@ -85,8 +89,8 @@ def meaning_worker():
             meaning = None
             source = None
 
-            # 1) AI API 우선 (한국어 뜻 제공)
-            settings = load_ai_settings()
+            # 1) AI API 우선 (한국어 뜻 제공) — 전역 캐시 생성이므로 서버 공용 키 사용
+            settings = get_server_ai_settings()
             if settings.get("api_key"):
                 try:
                     prompt = f'영어 단어 "{w}"의 뜻을 한국어로 간결하게 설명해주세요. 형식: [품사] 한국어뜻1, 뜻2. 2줄 이내로.'
@@ -157,7 +161,7 @@ def sentence_translation_worker():
             text = row["text"]
             existing = (row["translation"] or "").strip()
 
-            settings = load_ai_settings()
+            settings = get_server_ai_settings()  # 전역 캐시 생성 → 서버 공용 키
             if not settings.get("api_key"):
                 print(f"[TransWorker] No API key, skipping sentence {sentence_id}", flush=True)
                 conn.close()
@@ -215,7 +219,7 @@ def ai_precache_worker():
                 ai_precache_queue.task_done()
                 continue
 
-            settings = load_ai_settings()
+            settings = get_server_ai_settings()  # 전역 캐시 생성 → 서버 공용 키
             if not settings.get("api_key"):
                 conn.close()
                 ai_precache_queue.task_done()
@@ -285,7 +289,7 @@ def login_page():
     # 이미 로그인돼 있으면 앱으로
     if session.get("user_id"):
         return redirect("/")
-    return render_template("login.html")
+    return render_template("login.html", google_enabled=bool(GOOGLE_CLIENT_ID))
 
 
 @app.route("/health")
@@ -352,6 +356,98 @@ def api_me():
     if not user:
         return jsonify({"error": "unauthorized"}), 401
     return jsonify({"id": user["id"], "email": user["email"], "name": user["name"]})
+
+
+# ── 구글 OAuth 로그인 ────────────────────────────────────
+
+def _google_redirect_uri():
+    """콜백 URI. GOOGLE_REDIRECT_URI 환경변수 우선, 없으면 요청 호스트에서 유도.
+    프로덕션(비 localhost)은 https 강제 (Google은 정확히 일치하는 URI를 요구)."""
+    env = os.environ.get("GOOGLE_REDIRECT_URI")
+    if env:
+        return env
+    root = request.host_url
+    if not (root.startswith("http://localhost") or root.startswith("http://127.")):
+        root = root.replace("http://", "https://", 1)
+    return root.rstrip("/") + "/api/auth/google/callback"
+
+
+@app.route("/api/auth/google")
+def api_google_login():
+    if not GOOGLE_CLIENT_ID:
+        return redirect("/login?error=google_unconfigured")
+    import secrets as _secrets
+    state = _secrets.token_urlsafe(24)
+    session["oauth_state"] = state
+    params = urllib.parse.urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": _google_redirect_uri(),
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "online",
+        "prompt": "select_account",
+    })
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params)
+
+
+@app.route("/api/auth/google/callback")
+def api_google_callback():
+    # CSRF: state 검증
+    if not request.args.get("state") or request.args.get("state") != session.get("oauth_state"):
+        return redirect("/login?error=state")
+    session.pop("oauth_state", None)
+    code = request.args.get("code")
+    if not code:
+        return redirect("/login?error=nocode")
+
+    try:
+        # 1) code → access_token 교환
+        token_body = urllib.parse.urlencode({
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": _google_redirect_uri(),
+            "grant_type": "authorization_code",
+        }).encode()
+        treq = urllib.request.Request("https://oauth2.googleapis.com/token", data=token_body)
+        with urllib.request.urlopen(treq, timeout=10) as resp:
+            tok = json_lib.loads(resp.read().decode())
+        access_token = tok.get("access_token")
+        if not access_token:
+            return redirect("/login?error=token")
+        # 2) 사용자 정보 조회
+        ureq = urllib.request.Request(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        with urllib.request.urlopen(ureq, timeout=10) as resp:
+            info = json_lib.loads(resp.read().decode())
+    except Exception as e:
+        logging.warning(f"Google OAuth error: {e}")
+        return redirect("/login?error=google")
+
+    google_id = str(info.get("id", ""))
+    email = (info.get("email") or "").strip().lower()
+    name = info.get("name", "")
+    if not email or not google_id:
+        return redirect("/login?error=noemail")
+
+    # 기존 계정 연결 또는 신규 생성
+    user = db.get_user_by_google_id(google_id) or db.get_user_by_email(email)
+    if user:
+        if not user.get("google_id"):
+            db.link_google_id(user["id"], google_id)
+    else:
+        user = db.create_user(email=email, password_hash=None, name=name, google_id=google_id)
+        if not user:
+            return redirect("/login?error=create")
+        # 첫 가입자는 기존 데이터 인수
+        if db.count_users() == 1:
+            db.claim_orphan_data(user["id"])
+
+    session["user_id"] = user["id"]
+    return redirect("/")
 
 
 # ── API: Categories ────────────────────────────────────
@@ -1202,41 +1298,57 @@ def _background_sync_loop():
 AI_SETTINGS_FILE = os.path.join(db.DATA_DIR, "ai_settings.json")
 
 
-def load_ai_settings():
+def get_server_ai_settings():
+    """운영자(서버) 공용 키. 우선순위: 환경변수 → ai_settings.json 파일.
+    배경 워커(전역 캐시 생성)와, 사용자가 개인 키를 설정하지 않았을 때의 폴백."""
+    env_key = os.environ.get("SERVER_AI_KEY")
+    if env_key:
+        return {"provider": os.environ.get("SERVER_AI_PROVIDER", ""), "api_key": env_key}
     if os.path.exists(AI_SETTINGS_FILE):
         with open(AI_SETTINGS_FILE, "r") as f:
             return json_lib.loads(f.read())
     return {"provider": "", "api_key": ""}
 
 
-def save_ai_settings_file(settings):
-    os.makedirs(os.path.dirname(AI_SETTINGS_FILE), exist_ok=True)
-    with open(AI_SETTINGS_FILE, "w") as f:
-        f.write(json_lib.dumps(settings))
+def resolve_ai_settings():
+    """상호작용 요청용: 현재 사용자가 개인 키를 설정했으면 그것을, 아니면 서버 공용 키를 사용."""
+    u = current_user()
+    if u and u.get("ai_key"):
+        return {"provider": u.get("ai_provider", ""), "api_key": u.get("ai_key", "")}
+    return get_server_ai_settings()
 
 
 @app.route("/api/ai/settings", methods=["GET"])
 def api_ai_settings_get():
-    s = load_ai_settings()
-    # 보안: API 키는 마스킹해서 반환
-    masked = s.get("api_key", "")
+    u = current_user()
+    user_key = (u or {}).get("ai_key", "")
+    masked = user_key
     if masked and len(masked) > 8:
         masked = masked[:4] + "****" + masked[-4:]
-    return jsonify({"provider": s.get("provider", ""), "api_key_masked": masked, "has_key": bool(s.get("api_key"))})
+    server_available = bool(get_server_ai_settings().get("api_key"))
+    return jsonify({
+        "provider": (u or {}).get("ai_provider", ""),
+        "api_key_masked": masked,
+        "has_key": bool(user_key),
+        "server_key_available": server_available,  # 개인 키 미설정 시 서버 키로 동작하는지
+    })
 
 
 @app.route("/api/ai/settings", methods=["POST"])
 def api_ai_settings_save():
     data = request.json
-    save_ai_settings_file({"provider": data.get("provider", ""), "api_key": data.get("api_key", "")})
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    db.update_user_ai_settings(u["id"], data.get("provider", ""), data.get("api_key", ""))
     return jsonify({"ok": True})
 
 
 @app.route("/api/ai/test", methods=["POST"])
 def api_ai_test():
-    settings = load_ai_settings()
+    settings = resolve_ai_settings()
     if not settings.get("api_key"):
-        return jsonify({"error": "API 키가 설정되지 않았습니다"}), 400
+        return jsonify({"error": "API 키가 설정되지 않았습니다 (개인 키 또는 서버 키 필요)"}), 400
     try:
         result = call_ai(settings, "Say 'Hello! AI connection successful.' in one short sentence.")
         return jsonify({"result": result})
@@ -1355,7 +1467,7 @@ def _build_ai_prompt(sentence, action, quiz_types=None):
 
 @app.route("/api/ai/action", methods=["POST"])
 def api_ai_action():
-    settings = load_ai_settings()
+    settings = resolve_ai_settings()
     if not settings.get("api_key"):
         return jsonify({"error": "설정에서 AI API 키를 먼저 설정해주세요"}), 400
 
@@ -1421,8 +1533,8 @@ def api_word_meaning():
     meaning = None
     source = None
 
-    # 2단계: AI API 우선 (한국어 뜻 제공)
-    settings = load_ai_settings()
+    # 2단계: AI API 우선 (한국어 뜻 제공) — 사용자 키 우선, 없으면 서버 키
+    settings = resolve_ai_settings()
     if settings.get("api_key"):
         try:
             prompt = f'영어 단어 "{word}"의 뜻을 한국어로 간결하게 설명해주세요. 형식: [품사] 한국어뜻1, 뜻2. 2줄 이내로.'

@@ -917,7 +917,9 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
           <button class="btn btn-outline btn-sm" onclick="testAIConnection()">테스트</button>
         </div>
         <div id="ai-test-result" style="margin-top:8px;font-size:12px;min-height:20px;"></div>
+        <div id="ai-key-status" style="margin-top:8px;font-size:12px;"></div>
         <div style="margin-top:12px;font-size:11px;color:var(--text3);">
+          개인 API 키를 입력하면 내 키로 동작하고, 비워두면 서버 기본 키를 사용합니다.<br>
           <strong>API 키 발급:</strong>
           <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);">Gemini</a> |
           <a href="https://console.anthropic.com/" target="_blank" style="color:var(--primary);">Claude</a> |
@@ -5329,6 +5331,16 @@ async function loadAISettings() {
     const keyInput = document.getElementById('ai-api-key-input');
     if (keyInput && s.has_key) {
       keyInput.placeholder = s.api_key_masked + ' (저장됨)';
+    }
+    const statusEl = document.getElementById('ai-key-status');
+    if (statusEl) {
+      if (s.has_key) {
+        statusEl.innerHTML = '<span style="color:var(--green);">✔ 내 개인 API 키 사용 중</span>';
+      } else if (s.server_key_available) {
+        statusEl.innerHTML = '<span style="color:var(--cyan);">🔑 서버 기본 키로 동작 중 (개인 키 없이 사용 가능)</span>';
+      } else {
+        statusEl.innerHTML = '<span style="color:var(--amber);">⚠ 개인 API 키를 설정해야 AI 기능을 쓸 수 있습니다</span>';
+      }
     }
   } catch(e) {}
 }
