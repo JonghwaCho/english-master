@@ -110,3 +110,15 @@ if [ "$STATUS_OK" -eq 1 ]; then
 else
   echo "${Y}${BOLD}→ 위 안내대로 정리하면 두 환경이 일치합니다.${N}"
 fi
+
+# ── 작업 이어가기: 다음 할 일 표시 ───────────────────
+# 환경을 옮겨도 "무엇을 하려던 참이었는지" 기억할 필요 없이 여기서 바로 확인.
+NEXT_FILE="$(git rev-parse --show-toplevel)/docs/NEXT_ACTIONS.md"
+if [ -f "$NEXT_FILE" ]; then
+  echo ""
+  echo "${BOLD}${B}📋 작업 이어가기 (docs/NEXT_ACTIONS.md)${N}"
+  echo "──────────────────────────────────────────────"
+  # 제목/설명 인용블록은 건너뛰고 첫 '##' 섹션부터 본문만 출력
+  awk 'seen||/^## /{seen=1; print}' "$NEXT_FILE"
+  echo "──────────────────────────────────────────────"
+fi
