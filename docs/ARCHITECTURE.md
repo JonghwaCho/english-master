@@ -253,6 +253,10 @@ backdrop-filter: blur(12px)
 - **데이터 격리 완료(Step 2)**: 7개 테이블에 `user_id` 부여 + 복합 UNIQUE 재구축.
   요청마다 `db.set_current_user()`로 컨텍스트 설정 → 모든 DB 함수가 `_uid()`로 자동 필터.
   교차 사용자 접근 차단 검증됨. `word_meanings`/`ai_cache`만 전역 공유(내용 기반).
+- **세션 쿠키 보안**: `HttpOnly` + `SameSite=Lax`, 프로덕션은 `Secure`(`COOKIE_SECURE=1`).
+  `Lax`는 구글 OAuth 콜백 복귀와 호환(최상위 GET에 쿠키 전송).
+- **로그인 brute-force 방지**: IP 기준 인메모리 레이트리밋(15분 창 8회 초과 시 429).
+  `--workers 1` 전제 — 확장 시 공유 저장소(Redis) 필요.
 - HTTPS 강제 (Fly.io `force_https`)
 
 ## 10. 성능 최적화
@@ -277,6 +281,7 @@ backdrop-filter: blur(12px)
 | `OPEN_BROWSER` | `1` | 로컬 실행 시 브라우저 자동 오픈 (배포 시 0) |
 | `FLASK_DEBUG` | `1` | 디버그 모드 (배포 시 0) |
 | `ENABLE_SYNC` | `1` | 플레이리스트 자동 동기화 스레드 (다중 워커 시 0) |
+| `COOKIE_SECURE` | `0` | 세션 쿠키 Secure 플래그 (프로덕션 HTTPS에서 1) |
 | `SECRET_KEY` | (dev값) | Flask 세션 서명 키 (프로덕션 필수) |
 | `SERVER_AI_PROVIDER`/`SERVER_AI_KEY` | (없음) | 서버 공용 AI 키 (사용자 개인 키 미설정 시 폴백) |
 | `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` | (없음) | 구글 OAuth 자격증명 (미설정 시 구글 로그인 비활성) |

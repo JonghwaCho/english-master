@@ -29,6 +29,18 @@ app = Flask(__name__)
 # (미지정 시 재시작마다 세션이 무효화됨). Fly: `fly secrets set SECRET_KEY=...`
 app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
 
+# 세션 쿠키 보안 플래그
+#  - HttpOnly: JS에서 쿠키 접근 차단(XSS 시 세션 탈취 방지)
+#  - SameSite=Lax: 크로스사이트 요청에 쿠키 미전송(CSRF 완화). 단, 최상위 GET 이동엔
+#    전송되므로 구글 OAuth 콜백(리다이렉트 복귀)은 정상 동작.
+#  - Secure: HTTPS에서만 전송. 로컬(http)에선 로그인이 막히므로 프로덕션에서만 켠다
+#    (fly.toml [env] COOKIE_SECURE=1). 로컬 기본값 off.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(os.environ.get("COOKIE_SECURE", "0") == "1"),
+)
+
 # 구글 OAuth 설정 (Google Cloud Console에서 발급 → fly secrets로 주입)
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -381,15 +393,61 @@ def api_signup():
     return jsonify(resp)
 
 
+# ── 로그인 brute-force 방지 (IP 기준, 인메모리) ──────────
+# gunicorn --workers 1 전제(워커별 독립). 다중 워커/다중 머신으로 가면 공유 저장소 필요.
+_LOGIN_FAILS = {}          # ip -> [실패 timestamp들]
+_LOGIN_WINDOW = 900        # 15분 창
+_LOGIN_MAX = 8             # 창 내 최대 실패 횟수
+_LOGIN_LOCK = threading.Lock()
+
+
+def _client_ip():
+    xff = request.headers.get("X-Forwarded-For", "")
+    return (xff.split(",")[0].strip() if xff else request.remote_addr) or "unknown"
+
+
+def _login_retry_after():
+    """차단 상태면 남은 대기 초(양수), 아니면 0."""
+    now = time.time()
+    ip = _client_ip()
+    with _LOGIN_LOCK:
+        fails = [t for t in _LOGIN_FAILS.get(ip, []) if now - t < _LOGIN_WINDOW]
+        _LOGIN_FAILS[ip] = fails
+        if len(fails) >= _LOGIN_MAX:
+            return max(1, int(_LOGIN_WINDOW - (now - fails[0])))
+    return 0
+
+
+def _record_login_fail():
+    with _LOGIN_LOCK:
+        _LOGIN_FAILS.setdefault(_client_ip(), []).append(time.time())
+
+
+def _clear_login_fails():
+    with _LOGIN_LOCK:
+        _LOGIN_FAILS.pop(_client_ip(), None)
+
+
 @app.route("/api/auth/login", methods=["POST"])
 def api_login():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
 
+    # 과도한 실패 시 일시 차단
+    retry = _login_retry_after()
+    if retry:
+        return jsonify({
+            "error": f"로그인 시도가 너무 많습니다. {retry // 60 + 1}분 후 다시 시도하세요.",
+        }), 429
+
     user = db.get_user_by_email(email)
     if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
+        _record_login_fail()
         return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+
+    # 비밀번호가 맞았으므로 실패 카운트 초기화(정상 사용자 잠금 방지)
+    _clear_login_fails()
 
     # 이메일 미인증 계정은 로그인 차단(구글 계정은 이미 검증되어 email_verified=1)
     if not user.get("email_verified"):

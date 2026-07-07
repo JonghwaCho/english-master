@@ -12,6 +12,7 @@ primary_region = 'nrt'
   DATA_DIR = '/data'
   OPEN_BROWSER = '0'
   PORT = '8080'
+  COOKIE_SECURE = '1'
 
 [[mounts]]
   source = 'em_data'
