@@ -1025,6 +1025,25 @@ def process_review(item_id, item_type, correct):
     return {"level": new_level, "streak": new_streak, "next_review": next_review.isoformat()}
 
 
+# ── Onboarding ──────────────────────────────────────────
+
+def get_onboarding_status():
+    """현재 사용자의 시작 단계 완료 여부 (콘텐츠 추가 / 첫 학습 / 첫 복습)."""
+    conn = get_conn()
+    uid = _uid()
+
+    def has(q):
+        return conn.execute(q, (uid,)).fetchone()[0] > 0
+
+    status = {
+        "has_content": has("SELECT COUNT(*) FROM videos WHERE user_id=?"),
+        "has_studied": has("SELECT COUNT(*) FROM study_log WHERE user_id=? AND action IN ('study','bulk_study')"),
+        "has_reviewed": has("SELECT COUNT(*) FROM study_log WHERE user_id=? AND action='review'"),
+    }
+    conn.close()
+    return status
+
+
 # ── Statistics ──────────────────────────────────────────
 
 def get_stats(video_id=None):

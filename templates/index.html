@@ -231,6 +231,30 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
 .modal-overlay.show { display: flex; }
 .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 32px; max-width: 500px; width: 90%; }
 .modal h2 { font-size: 20px; margin-bottom: 16px; }
+/* 온보딩 */
+.onb-card { background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(167,139,250,0.08)); border: 1px solid var(--primary); border-radius: 16px; padding: 20px 22px; margin-bottom: 24px; position: relative; }
+.onb-card .onb-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.onb-card .onb-title { font-size: 16px; font-weight: 800; }
+.onb-card .onb-sub { font-size: 13px; color: var(--text2); margin-bottom: 16px; }
+.onb-card .onb-close { background: none; border: none; color: var(--text3); font-size: 18px; cursor: pointer; line-height: 1; }
+.onb-steps { display: flex; flex-direction: column; gap: 10px; }
+.onb-step { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); cursor: pointer; transition: border-color .15s; }
+.onb-step:hover { border-color: var(--primary); }
+.onb-step.done { opacity: 0.6; cursor: default; }
+.onb-step.done:hover { border-color: var(--border); }
+.onb-check { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; color: transparent; }
+.onb-step.done .onb-check { background: var(--green); border-color: var(--green); color: #fff; }
+.onb-step .onb-body { flex: 1; }
+.onb-step .onb-name { font-size: 14px; font-weight: 600; }
+.onb-step .onb-desc { font-size: 12px; color: var(--text3); }
+.onb-step .onb-go { font-size: 13px; color: var(--primary); font-weight: 600; }
+.onb-step.done .onb-go { display: none; }
+.onb-progress { font-size: 12px; color: var(--text3); }
+.welcome-steps { display: flex; flex-direction: column; gap: 12px; margin: 18px 0 8px; }
+.welcome-steps .ws { display: flex; align-items: flex-start; gap: 12px; }
+.welcome-steps .wn { width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.welcome-steps .wt { font-size: 14px; }
+.welcome-steps .wt b { display: block; margin-bottom: 2px; }
 .modal .btn-row { display: flex; gap: 12px; margin-top: 20px; justify-content: flex-end; }
 
 /* Tabs */
@@ -419,11 +443,13 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
   <!-- Dashboard -->
   <div class="page active" id="page-dashboard">
     <h1 class="page-title">Dashboard</h1>
+    <!-- 온보딩 시작 체크리스트 (신규 사용자용, 3단계 완료 시 자동 숨김) -->
+    <div id="onboarding-card"></div>
     <div class="stats-grid" id="dashboard-stats"></div>
     <div class="card">
       <div class="card-title">빠른 시작</div>
       <div style="display:flex; gap:12px; margin-top:12px; flex-wrap:wrap;">
-        <button class="btn btn-primary" onclick="alert('버튼 클릭됨!'); showPage('videos');">콘텐츠 추가</button>
+        <button class="btn btn-primary" onclick="showPage('videos')">콘텐츠 추가</button>
         <button class="btn btn-green" onclick="showPage('study')">학습 시작</button>
         <button class="btn btn-outline" onclick="showPage('review-sentences')">문장 복습 <span id="quick-review-sent-count"></span></button>
         <button class="btn btn-outline" onclick="showPage('review-words')">단어 복습 <span id="quick-review-word-count"></span></button>
@@ -940,6 +966,23 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     <div class="btn-row">
       <button class="btn btn-outline" onclick="closeCategoryModal()">취소</button>
       <button class="btn btn-primary" onclick="saveCategoryModal()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 신규 사용자 환영 모달 -->
+<div class="modal-overlay" id="modal-welcome">
+  <div class="modal" style="max-width:460px;">
+    <h2 style="background:linear-gradient(90deg,var(--primary),var(--purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;">English Master에 오신 걸 환영해요 👋</h2>
+    <p style="font-size:14px;color:var(--text2);">YouTube 영상으로 영어를 배우는 앱이에요. 3단계면 시작할 수 있어요.</p>
+    <div class="welcome-steps">
+      <div class="ws"><div class="wn">1</div><div class="wt"><b>콘텐츠 추가</b>YouTube 링크·텍스트·기사를 붙여넣어 학습 자료를 만들어요.</div></div>
+      <div class="ws"><div class="wn">2</div><div class="wt"><b>학습하기</b>문장을 보며 아는 것/모르는 것을 표시해요.</div></div>
+      <div class="ws"><div class="wn">3</div><div class="wt"><b>복습하기</b>망각곡선에 맞춰 자동으로 복습 일정이 잡혀요.</div></div>
+    </div>
+    <div class="btn-row" style="margin-top:20px;">
+      <button class="btn btn-outline" onclick="closeWelcome()">나중에</button>
+      <button class="btn btn-primary" onclick="closeWelcome(); showPage('videos');">첫 콘텐츠 추가하기 →</button>
     </div>
   </div>
 </div>
@@ -1528,7 +1571,61 @@ async function setVideoCategory(videoId, catId) {
 }
 
 // ── Dashboard ──────────────────────────────────────────
+// ── 온보딩 (신규 사용자 시작 안내) ──────────────────────
+function closeWelcome() {
+  var m = document.getElementById('modal-welcome');
+  if (m) m.classList.remove('show');
+}
+function dismissOnboarding() {
+  localStorage.setItem('onbDismissed', '1');
+  var c = document.getElementById('onboarding-card');
+  if (c) c.innerHTML = '';
+}
+async function loadOnboarding() {
+  var card = document.getElementById('onboarding-card');
+  if (!card) return;
+  var s;
+  try { s = await api('/api/onboarding'); } catch (e) { card.innerHTML = ''; return; }
+  var steps = [
+    { key: 'has_content',  name: '콘텐츠 추가', desc: 'YouTube 링크·텍스트로 학습 자료 만들기', page: 'videos',           go: '추가하기' },
+    { key: 'has_studied',  name: '첫 학습',     desc: '문장을 보며 아는지/모르는지 표시하기',   page: 'study',            go: '학습하기' },
+    { key: 'has_reviewed', name: '첫 복습',     desc: '망각곡선에 맞춘 복습 시작하기',          page: 'review-sentences', go: '복습하기' },
+  ];
+  var done = steps.filter(function (st) { return s[st.key]; }).length;
+
+  // 모두 완료했거나 사용자가 닫았으면 카드 숨김
+  if (done >= steps.length || localStorage.getItem('onbDismissed') === '1') {
+    card.innerHTML = '';
+  } else {
+    card.innerHTML =
+      '<div class="onb-card"><div class="onb-head">' +
+        '<div class="onb-title">🚀 시작하기</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<span class="onb-progress">' + done + '/' + steps.length + ' 완료</span>' +
+          '<button class="onb-close" onclick="dismissOnboarding()" title="닫기">✕</button>' +
+        '</div></div>' +
+      '<div class="onb-sub">아래 3단계를 완료하면 이 카드는 자동으로 사라져요.</div>' +
+      '<div class="onb-steps">' + steps.map(function (st) {
+        var d = !!s[st.key];
+        return '<div class="onb-step' + (d ? ' done' : '') + '"' +
+          (d ? '' : ' onclick="showPage(\'' + st.page + '\')"') + '>' +
+          '<div class="onb-check">✓</div>' +
+          '<div class="onb-body"><div class="onb-name">' + st.name + '</div>' +
+          '<div class="onb-desc">' + st.desc + '</div></div>' +
+          '<div class="onb-go">' + st.go + ' →</div></div>';
+      }).join('') + '</div></div>';
+  }
+
+  // 완전 신규 사용자(아무 것도 안 함) + 아직 환영 모달을 안 봤으면 1회 표시
+  if (done === 0 && !localStorage.getItem('welcomeSeen')) {
+    var m = document.getElementById('modal-welcome');
+    if (m) m.classList.add('show');
+    localStorage.setItem('welcomeSeen', '1');
+  }
+}
+
 async function loadDashboard() {
+  loadOnboarding();
   var stats = await api('/api/stats');
   var sentDue = stats.sentence_due_reviews || 0;
   var wordDue = stats.word_due_reviews || 0;

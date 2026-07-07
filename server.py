@@ -1414,6 +1414,11 @@ def api_stats():
     return jsonify(db.get_stats(video_id=int(video_id) if video_id else None))
 
 
+@app.route("/api/onboarding")
+def api_onboarding():
+    return jsonify(db.get_onboarding_status())
+
+
 @app.route("/api/reviews/videos")
 def api_review_videos():
     """복습 항목이 있는 콘텐츠(영상) 목록 반환"""
