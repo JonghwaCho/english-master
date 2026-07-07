@@ -311,6 +311,11 @@ def _migrate_email(conn):
         # 기존 사용자/구글 계정은 인증된 것으로 간주(마이그레이션으로 락아웃되지 않도록)
         conn.execute("UPDATE users SET email_verified=1")
 
+    # 비밀번호 재설정 토큰 컬럼 (독립 체크 — 이메일 인증만 있던 DB도 추가되도록)
+    if "reset_token" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN reset_token TEXT")
+        conn.execute("ALTER TABLE users ADD COLUMN reset_sent_at TEXT")
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
@@ -1635,5 +1640,35 @@ def mark_email_verified(user_id):
     """이메일 인증 완료 처리(토큰 소거)."""
     conn = get_conn()
     conn.execute("UPDATE users SET email_verified=1, verify_token=NULL WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+# ── 비밀번호 재설정 ─────────────────────────────────────
+
+def set_reset_token(user_id, token):
+    """비밀번호 재설정 토큰을 저장하고 발송 시각을 기록한다."""
+    conn = get_conn()
+    conn.execute("UPDATE users SET reset_token=?, reset_sent_at=datetime('now') WHERE id=?",
+                 (token, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_reset_token(token):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE reset_token=?", (token,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_password(user_id, password_hash):
+    """비밀번호를 교체하고 재설정 토큰을 소거한다.
+    재설정을 통해 이메일 소유가 증명됐으므로 email_verified도 1로 올린다."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET password_hash=?, reset_token=NULL, reset_sent_at=NULL, email_verified=1 WHERE id=?",
+        (password_hash, user_id),
+    )
     conn.commit()
     conn.close()

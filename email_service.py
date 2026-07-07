@@ -81,3 +81,24 @@ def verification_email_bodies(link, app_name="English Master"):
   <p style="color:#94a3b8;font-size:12px;margin-top:24px;">본인이 요청하지 않았다면 이 메일을 무시하세요.</p>
 </div>"""
     return subject, text, html
+
+
+def password_reset_email_bodies(link, app_name="English Master"):
+    """비밀번호 재설정 메일의 (제목, 텍스트본문, HTML본문)을 만든다."""
+    subject = f"[{app_name}] 비밀번호 재설정 안내"
+    text = (
+        f"{app_name} 비밀번호 재설정을 요청하셨습니다.\n\n"
+        f"아래 링크를 눌러 새 비밀번호를 설정하세요(1시간 내 유효):\n{link}\n\n"
+        f"본인이 요청하지 않았다면 이 메일을 무시하세요. 비밀번호는 변경되지 않습니다."
+    )
+    html = f"""\
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b;">
+  <h2 style="margin:0 0 8px;">{app_name} 비밀번호 재설정</h2>
+  <p style="color:#475569;line-height:1.6;">아래 버튼을 눌러 새 비밀번호를 설정하세요. 이 링크는 <b>1시간</b> 동안만 유효합니다.</p>
+  <p style="margin:24px 0;">
+    <a href="{link}" style="display:inline-block;background:#6366f1;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;">비밀번호 재설정</a>
+  </p>
+  <p style="color:#94a3b8;font-size:13px;line-height:1.6;">버튼이 동작하지 않으면 아래 주소를 브라우저에 붙여넣으세요:<br><span style="word-break:break-all;">{link}</span></p>
+  <p style="color:#94a3b8;font-size:12px;margin-top:24px;">본인이 요청하지 않았다면 이 메일을 무시하세요. 비밀번호는 변경되지 않습니다.</p>
+</div>"""
+    return subject, text, html

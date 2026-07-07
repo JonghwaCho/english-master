@@ -27,14 +27,14 @@
 | 이메일 인증 | 가입 인증 메일 + 미인증 로그인 차단 + 운영자 SMTP 설정 | 2026-07-07 |
 | 온보딩 흐름 | 신규 사용자 환영 모달 + 시작 체크리스트(3단계 자동 추적) | 2026-07-07 |
 | 보안 강화(A-1) | 세션 쿠키 플래그 + 로그인 brute-force 방지 | 2026-07-07 |
+| 비밀번호 재설정(A-2) | 재설정 토큰 메일(1시간 만료) → 새 비밀번호, 이메일 인프라 재사용 | 2026-07-07 |
 
 ### ⬜ 남은 일 (우선순위별)
 
 **A. 보안·계정** — 실사용자 확대 전 권장
 | 항목 | 설명 | 의존성 |
 |------|------|--------|
-| 비밀번호 재설정 | 재설정 토큰 메일 → 새 비밀번호. 이메일 인프라(`email_service.py`) 재사용 | 없음(SMTP 기존) |
-| 🔒 구글 Client Secret 재발급 | 2026-07-06 세션 중 채팅에 노출된 시크릿 rotate | 없음 |
+| 🔒 구글 Client Secret 재발급 | 2026-07-06 세션 중 채팅에 노출된 시크릿 rotate | 없음(구글 콘솔 작업) |
 
 **B. 수익화**
 | 항목 | 설명 | 의존성 |
@@ -60,6 +60,26 @@
 ---
 
 ## 결정 기록
+
+### 2026-07-07 · 비밀번호 재설정 (A-2)
+
+**배경**
+비밀번호를 잊은 사용자가 스스로 복구할 수단이 없으면 계정이 잠긴다. 이메일 인증에서 만든 SMTP 인프라(`email_service.py` + `app_settings`)를 재사용해 구현.
+
+**정책/이유**
+- **토큰은 1회용 + 1시간 만료** — `users.reset_token`/`reset_sent_at`. `update_password()`가 성공 시 토큰을 소거(재사용 방지). 만료는 `reset_sent_at` 나이로 판정(`RESET_TOKEN_TTL_HOURS=1`).
+- **이메일 열거(enumeration) 방지** — `forgot-password`는 가입 여부와 무관하게 **항상 동일한 일반 응답**. 존재하는 계정에만 실제 메일 발송. (인증 재발송과 동일 철학)
+- **OAuth 전용 계정 제외** — `password_hash`가 있는(비밀번호 로그인) 계정만 재설정 대상.
+- **재설정 성공 = 이메일 소유 증명** → `email_verified=1`로 올리고 즉시 로그인시킴.
+- **재설정 페이지는 공개 경로** — `/reset-password`를 인증 게이트 예외에 추가(로그인 안 한 상태에서 접근해야 하므로).
+
+**구현**
+- `database.py`: `reset_token`/`reset_sent_at` 컬럼(독립 마이그레이션), `set_reset_token`/`get_user_by_reset_token`/`update_password`
+- `email_service.py`: `password_reset_email_bodies()`
+- `server.py`: `_send_password_reset()`, `POST /api/auth/forgot-password`, `GET /reset-password`(페이지), `POST /api/auth/reset-password`, `_reset_token_expired()`
+- `templates/reset.html`(신설), `login.html`에 "비밀번호를 잊으셨나요?" 링크 + `forgotPassword()`
+
+**상태**: ✅ 구현·검증 완료 (2026-07-07). E2E: 링크발급/열거방지/토큰유효·만료/재설정 후 옛↔새 비번/토큰 1회용/짧은 비번 거부 전부 통과.
 
 ### 2026-07-07 · 보안 강화 A-1 (세션 쿠키 + 로그인 brute-force)
 

@@ -11,7 +11,7 @@ import threading
 import urllib.request
 import urllib.parse
 import json as json_lib
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -51,7 +51,7 @@ ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").sp
 
 # ── 인증 게이트 ─────────────────────────────────────────
 # 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
-_PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health")
+_PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health", "/reset-password")
 
 
 @app.before_request
@@ -484,6 +484,77 @@ def api_resend_verification():
         if dev_link:
             resp["dev_verify_url"] = dev_link
     return jsonify(resp)
+
+
+# ── 비밀번호 재설정 ─────────────────────────────────────
+
+RESET_TOKEN_TTL_HOURS = 1
+
+
+def _send_password_reset(user):
+    """재설정 토큰을 발급·저장하고 재설정 메일을 보낸다. 반환: (ok, err, dev_link)."""
+    token = secrets.token_urlsafe(32)
+    db.set_reset_token(user["id"], token)
+    link = request.host_url.rstrip("/") + "/reset-password?token=" + token
+    settings = db.get_email_settings()
+    subject, text, html = email_service.password_reset_email_bodies(link)
+    ok, err = email_service.send_email(settings, user["email"], subject, text, html)
+    dev_link = None
+    if not ok:
+        logging.warning(f"[reset] 메일 발송 실패({err}). {user['email']} 재설정 링크: {link}")
+        if app.debug or not settings.get("enabled"):
+            dev_link = link
+    return ok, err, dev_link
+
+
+@app.route("/api/auth/forgot-password", methods=["POST"])
+def api_forgot_password():
+    """재설정 메일 요청. 이메일 존재 여부를 노출하지 않도록 항상 동일 응답."""
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    user = db.get_user_by_email(email)
+    resp = {"message": "가입된 이메일이라면 재설정 링크를 보냈습니다. 메일함을 확인하세요."}
+    # 비밀번호 로그인 계정만 재설정 가능(OAuth 전용 계정은 비밀번호가 없음)
+    if user and user.get("password_hash"):
+        ok, err, dev_link = _send_password_reset(user)
+        if dev_link:
+            resp["dev_reset_url"] = dev_link
+    return jsonify(resp)
+
+
+@app.route("/reset-password")
+def reset_password_page():
+    """재설정 링크가 여는 페이지. 토큰 유효성 검사 후 새 비밀번호 입력 폼을 보여준다."""
+    token = request.args.get("token", "")
+    user = db.get_user_by_reset_token(token) if token else None
+    valid = bool(user) and not _reset_token_expired(user)
+    return render_template("reset.html", valid=valid, token=token)
+
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+def api_reset_password():
+    data = request.get_json(silent=True) or {}
+    token = data.get("token", "")
+    password = data.get("password") or ""
+    if len(password) < 8:
+        return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+    user = db.get_user_by_reset_token(token) if token else None
+    if not user or _reset_token_expired(user):
+        return jsonify({"error": "링크가 만료되었거나 올바르지 않습니다. 다시 요청해주세요."}), 400
+    db.update_password(user["id"], generate_password_hash(password, method="pbkdf2:sha256"))
+    # 재설정 성공 → 바로 로그인시킨다
+    session["user_id"] = user["id"]
+    return jsonify({"ok": True})
+
+
+def _reset_token_expired(user):
+    sent = user.get("reset_sent_at")
+    if not sent:
+        return True
+    try:
+        sent_dt = datetime.strptime(sent, "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return True
+    return datetime.utcnow() - sent_dt > timedelta(hours=RESET_TOKEN_TTL_HOURS)
 
 
 @app.route("/api/auth/logout", methods=["POST"])

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>English Master · 비밀번호 재설정</title>
+  <style>
+    :root {
+      --bg: #0f0f1a; --text: #e2e8f0; --muted: #94a3b8;
+      --primary: #6366f1; --purple: #a78bfa; --border: #334155; --red: #ef4444; --green: #22c55e;
+      --card: rgba(30, 27, 60, 0.55);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1e1040 0%, transparent 60%),
+                  radial-gradient(1000px 500px at 100% 20%, #042f2e 0%, transparent 55%), var(--bg);
+      color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .card {
+      width: 100%; max-width: 400px; background: var(--card); backdrop-filter: blur(16px);
+      border: 1px solid var(--border); border-radius: 20px; padding: 40px 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px;
+      background: linear-gradient(90deg, var(--primary), var(--purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    p.sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+    input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+      background: rgba(15,15,26,0.7); color: var(--text); font-size: 15px; outline: none; }
+    input:focus { border-color: var(--primary); }
+    .btn { width: 100%; margin-top: 22px; padding: 13px; border: none; border-radius: 11px;
+      background: linear-gradient(90deg, var(--primary), var(--purple)); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .msg { margin-top: 14px; font-size: 13px; text-align: center; min-height: 18px; }
+    .msg.error { color: var(--red); }
+    .msg.ok { color: var(--green); }
+    a.link { display: inline-block; margin-top: 18px; color: var(--primary); font-size: 13px; text-decoration: none; }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>비밀번호 재설정</h1>
+    {% if valid %}
+    <p class="sub">새 비밀번호를 입력하세요 (8자 이상).</p>
+    <form id="resetForm" onsubmit="return submitReset(event)">
+      <input type="hidden" id="token" value="{{ token }}">
+      <label>새 비밀번호</label>
+      <input type="password" id="password" autocomplete="new-password" placeholder="••••••••" required>
+      <label>새 비밀번호 확인</label>
+      <input type="password" id="password2" autocomplete="new-password" placeholder="••••••••" required>
+      <button type="submit" class="btn" id="submitBtn">비밀번호 변경</button>
+    </form>
+    <div class="msg" id="msg"></div>
+    {% else %}
+    <p class="sub">링크가 만료되었거나 올바르지 않습니다. 재설정을 다시 요청해주세요.</p>
+    <div class="center"><a class="link" href="/login">← 로그인으로 돌아가기</a></div>
+    {% endif %}
+  </div>
+
+  <script>
+    function setMsg(t, cls) {
+      var el = document.getElementById('msg');
+      if (el) { el.textContent = t; el.className = 'msg ' + (cls || ''); }
+    }
+    async function submitReset(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submitBtn');
+      var pw = document.getElementById('password').value;
+      var pw2 = document.getElementById('password2').value;
+      if (pw !== pw2) { setMsg('두 비밀번호가 일치하지 않습니다.', 'error'); return false; }
+      if (pw.length < 8) { setMsg('비밀번호는 8자 이상이어야 합니다.', 'error'); return false; }
+      btn.disabled = true; setMsg('변경 중...');
+      try {
+        var res = await fetch('/api/auth/reset-password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: document.getElementById('token').value, password: pw })
+        });
+        var data = await res.json();
+        if (!res.ok) { setMsg(data.error || '오류가 발생했습니다.', 'error'); btn.disabled = false; return false; }
+        setMsg('변경되었습니다. 이동합니다...', 'ok');
+        setTimeout(function () { window.location.href = '/'; }, 800);
+      } catch (err) {
+        setMsg('네트워크 오류가 발생했습니다.', 'error'); btn.disabled = false;
+      }
+      return false;
+    }
+  </script>
+</body>
+</html>

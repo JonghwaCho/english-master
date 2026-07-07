@@ -96,6 +96,10 @@
       <button type="submit" class="btn" id="submitBtn">로그인</button>
     </form>
 
+    <div id="forgotRow" style="text-align:center;margin-top:12px;">
+      <a href="#" onclick="forgotPassword(); return false;" style="color:var(--muted);font-size:12px;text-decoration:none;">비밀번호를 잊으셨나요?</a>
+    </div>
+
     <div class="divider">또는</div>
     {% if google_enabled %}
     <button class="btn-google" onclick="location.href='/api/auth/google'">
@@ -147,6 +151,8 @@
       document.getElementById('pwHint').style.display = m === 'signup' ? 'block' : 'none';
       document.getElementById('submitBtn').textContent = m === 'signup' ? '회원가입' : '로그인';
       document.getElementById('password').setAttribute('autocomplete', m === 'signup' ? 'new-password' : 'current-password');
+      var fr = document.getElementById('forgotRow');
+      if (fr) fr.style.display = m === 'signup' ? 'none' : 'block';
       setMsg('');
     }
 
@@ -154,6 +160,26 @@
       const el = document.getElementById('msg');
       el.textContent = text;
       el.className = 'msg' + (isError ? ' error' : '');
+    }
+
+    async function forgotPassword() {
+      var email = document.getElementById('email').value.trim();
+      if (!email || email.indexOf('@') < 0) {
+        setMsg('먼저 가입한 이메일을 입력하세요.', true);
+        document.getElementById('email').focus();
+        return;
+      }
+      setMsg('요청 중...');
+      try {
+        var res = await fetch('/api/auth/forgot-password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email })
+        });
+        var data = await res.json();
+        var msg = data.message || '재설정 링크를 보냈습니다.';
+        if (data.dev_reset_url) { console.log('reset link:', data.dev_reset_url); msg += ' (개발용 링크는 콘솔 참조)'; }
+        setMsg(msg, false);
+      } catch (e) { setMsg('오류가 발생했습니다.', true); }
     }
 
     async function submitForm(e) {
