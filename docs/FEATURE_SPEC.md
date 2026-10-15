@@ -21,6 +21,7 @@
 - **관리자 판별**: `ADMIN_EMAILS` 환경변수(콤마 구분) 또는 미설정 시 첫 사용자(id=1)
 - **표시**: 전체 사용자 목록(이메일·이름·가입일·로그인수단·개인AI키 여부·영상/문장/단어/복습 수·최근 활동), 요약 통계(전체/7일 신규·활성 사용자, 총 콘텐츠)
 - **주의**: 비밀번호 해시·AI 키 값은 노출하지 않음. 관리자 조회는 `_uid()` 필터를 우회하므로 반드시 서버 측 is_admin 검증 후 호출
+- **사용자 관리(확장)**: 각 사용자 행에서 **상세**(요금제·콘텐츠/AI 사용량·결제 내역), **정지/해제**(`users.suspended` → `before_request`에서 전면 차단, API 403/페이지 리다이렉트), **삭제**(계정 + 사용자 범위 데이터 전부, 전역 캐시는 보존, 이중 확인). **관리자·본인 계정은 정지·삭제 불가**(락아웃 방지). API: `GET /api/admin/users/<id>/detail`, `POST /api/admin/users/<id>/suspend {suspended}`, `DELETE /api/admin/users/<id>`
 
 ### F-0.9 이메일 인증 (Email Verification)
 - **가입 흐름**: 이메일/비밀번호 회원가입 시 계정을 **미인증(email_verified=0)** 상태로 생성하고 인증 메일을 발송, **로그인은 보류**. 인증 링크(`GET /api/auth/verify?token=...`) 클릭 시 인증 완료 + 즉시 로그인 → `/?verified=1`
@@ -458,6 +459,9 @@ process_review(item_id, item_type, correct):
 | GET/PUT | /api/admin/billing-settings | 토스 결제 설정 조회·편집(secret 마스킹) |
 | GET | /api/admin/payments | 최근 결제 내역 |
 | POST | /api/admin/payments/:order_id/cancel | 결제 취소/환불 + 요금제 회수 |
+| GET | /api/admin/users/:id/detail | 사용자 상세(요금제·사용량·결제) |
+| POST | /api/admin/users/:id/suspend | 계정 정지/해제 |
+| DELETE | /api/admin/users/:id | 계정 + 데이터 삭제 |
 
 ### 결제 API
 | Method | Endpoint | 설명 |
@@ -490,6 +494,7 @@ process_review(item_id, item_type, correct):
 | v1.10 | 2026-10-15 | DB 백업 — 매일 자동 SQLite 온라인 백업(최신 14개 롤링), 관리자 수동 백업·목록·다운로드(오프사이트)·삭제, 파일명 검증으로 경로탈출 차단, Fly 볼륨 스냅샷 보완 안내 |
 | v1.11 | 2026-10-15 | 실결제(토스페이먼츠) — 단건 1개월 이용권. 서버 주문·금액 변조 차단, 서버 승인(Basic), 멱등 부여, 업그레이드 모달·v2 SDK, 운영자 키 편집(테스트/운영), 결제 원장·관리자 내역 |
 | v1.12 | 2026-10-15 | 환불/취소 — 관리자 결제 취소(토스 cancel API, 전액) + 요금제 free 회수, 멱등 |
+| v1.13 | 2026-10-15 | 관리자 확장 — 사용자 정지/해제(전면 차단)·삭제(데이터 cascade, 캐시 보존)·상세 조회, 관리자/본인 보호 |
 
 ---
 

@@ -146,11 +146,11 @@
             <th>이메일</th><th>이름</th><th>가입일</th><th>로그인</th>
             <th>요금제</th><th class="num">사용량</th>
             <th class="num">영상</th><th class="num">문장</th><th class="num">단어</th><th class="num">복습</th>
-            <th>최근 활동</th>
+            <th>최근 활동</th><th>관리</th>
           </tr>
         </thead>
         <tbody id="user-rows">
-          <tr><td colspan="11" class="loading">불러오는 중...</td></tr>
+          <tr><td colspan="12" class="loading">불러오는 중...</td></tr>
         </tbody>
       </table>
     </div>
@@ -557,7 +557,7 @@
       document.getElementById('user-count').textContent = users.length;
       if (!users.length) {
         document.getElementById('user-rows').innerHTML =
-          '<tr><td colspan="11" class="loading">사용자가 없습니다</td></tr>';
+          '<tr><td colspan="12" class="loading">사용자가 없습니다</td></tr>';
         return;
       }
       document.getElementById('user-rows').innerHTML = users.map(function(u) {
@@ -565,9 +565,15 @@
           ? '<span class="badge g">Google</span>'
           : '<span class="badge k">이메일</span>';
         var ai = u.has_ai_key ? ' <span class="badge k">AI키</span>' : '';
-        return '<tr>' +
-          '<td class="email">' + (u.email || '') + '</td>' +
-          '<td>' + (u.name || '<span class="muted">—</span>') + '</td>' +
+        var suspended = u.suspended ? 1 : 0;
+        var suspBadge = suspended ? ' <span class="badge k" style="background:var(--red,#c0392b);color:#fff;">정지</span>' : '';
+        var actions =
+          '<button class="btn" style="padding:3px 8px;" onclick="showUserDetail(' + u.id + ')">상세</button> ' +
+          '<button class="btn" style="padding:3px 8px;" onclick="toggleSuspend(this,' + u.id + ',' + suspended + ')">' + (suspended ? '해제' : '정지') + '</button> ' +
+          '<button class="btn" style="padding:3px 8px;background:var(--red,#c0392b);" onclick="deleteUser(this,' + u.id + ',\'' + esc(u.email || '') + '\')">삭제</button>';
+        return '<tr' + (suspended ? ' style="opacity:.55;"' : '') + '>' +
+          '<td class="email">' + esc(u.email || '') + suspBadge + '</td>' +
+          '<td>' + (u.name ? esc(u.name) : '<span class="muted">—</span>') + '</td>' +
           '<td>' + fmtDate(u.created_at) + '</td>' +
           '<td>' + login + ai + '</td>' +
           '<td>' + planSelect(u) + '</td>' +
@@ -577,8 +583,68 @@
           '<td class="num">' + u.words + '</td>' +
           '<td class="num">' + u.reviews + '</td>' +
           '<td>' + fmtDate(u.last_active) + '</td>' +
+          '<td style="white-space:nowrap;">' + actions + '</td>' +
           '</tr>';
       }).join('');
+    }
+
+    async function toggleSuspend(btn, userId, cur) {
+      var want = cur ? false : true;
+      if (!confirm(want ? '이 계정을 정지할까요? (로그인·사용 차단)' : '정지를 해제할까요?')) return;
+      btn.disabled = true;
+      try {
+        var res = await fetch('/api/admin/users/' + userId + '/suspend', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ suspended: want }),
+        });
+        var j = await res.json();
+        if (!res.ok || j.error) throw new Error(j.error || '실패');
+        reloadUsers();
+      } catch (e) { alert(e.message || '실패'); btn.disabled = false; }
+    }
+
+    async function deleteUser(btn, userId, email) {
+      if (!confirm('⚠ 계정과 모든 데이터(영상/문장/단어/복습/결제내역 등)를 영구 삭제합니다.\n되돌릴 수 없습니다.\n\n' + email + ' 를 삭제할까요?')) return;
+      if (!confirm('정말 삭제하시겠습니까? 마지막 확인입니다.')) return;
+      btn.disabled = true;
+      try {
+        var res = await fetch('/api/admin/users/' + userId, { method: 'DELETE' });
+        var j = await res.json();
+        if (!res.ok || j.error) throw new Error(j.error || '삭제 실패');
+        load();  // 통계·목록 전체 갱신
+      } catch (e) { alert(e.message || '삭제 실패'); btn.disabled = false; }
+    }
+
+    async function showUserDetail(userId) {
+      var d;
+      try {
+        d = await fetch('/api/admin/users/' + userId + '/detail').then(function (r) { return r.json(); });
+        if (d.error) throw new Error(d.error);
+      } catch (e) { alert('상세를 불러오지 못했습니다'); return; }
+      var pay = (d.payments || []).map(function (p) {
+        return '<tr><td>' + esc(p.plan_code) + '</td><td>' + (p.amount || 0).toLocaleString() + '원</td><td>' + esc(p.status) + '</td><td style="font-size:11px;">' + esc((p.approved_at || p.created_at || '').slice(0, 16)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="4" class="muted">결제 내역 없음</td></tr>';
+      var a = d.ai_usage || {}, pl = d.plan || {};
+      var html =
+        '<div style="background:var(--card,#fff);max-width:520px;width:100%;border-radius:12px;padding:20px;max-height:85vh;overflow:auto;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+            '<h3 style="margin:0;">' + esc(d.email) + (d.suspended ? ' <span style="color:var(--red,#c0392b);font-size:13px;">(정지됨)</span>' : '') + '</h3>' +
+            '<button onclick="document.getElementById(\'user-detail-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button></div>' +
+          '<p style="margin:2px 0;color:var(--text2,#555);">가입: ' + esc((d.created_at || '').slice(0, 10)) + ' · ' + (d.has_google ? 'Google' : '이메일') + (d.has_ai_key ? ' · 개인 AI키' : '') + '</p>' +
+          '<p style="margin:8px 0 2px;"><b>요금제</b>: ' + esc(pl.plan_name || pl.plan_code || '-') + ' · 콘텐츠 ' + (pl.count != null ? pl.count + '/' + pl.limit : '-') + '</p>' +
+          '<p style="margin:2px 0;"><b>AI 사용</b>: 오늘 ' + (a.daily_count != null ? a.daily_count + '/' + (a.daily_limit < 0 ? '∞' : a.daily_limit) : '-') + ' · 이번 달 ' + (a.monthly_count != null ? a.monthly_count + '/' + (a.monthly_limit < 0 ? '∞' : a.monthly_limit) : '-') + '</p>' +
+          '<h4 style="margin:14px 0 6px;">결제 내역</h4>' +
+          '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr><th style="text-align:left;">요금제</th><th style="text-align:left;">금액</th><th style="text-align:left;">상태</th><th style="text-align:left;">일시</th></tr></thead><tbody>' + pay + '</tbody></table>' +
+        '</div>';
+      var wrap = document.getElementById('user-detail-modal');
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'user-detail-modal';
+        wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+        wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+        document.body.appendChild(wrap);
+      }
+      wrap.innerHTML = html;
     }
 
     load();

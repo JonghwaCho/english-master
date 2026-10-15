@@ -67,6 +67,12 @@ def _require_login():
         return redirect("/login")
     # 이후 모든 DB 호출이 이 사용자로 자동 격리되도록 컨텍스트 설정
     db.set_current_user(uid)
+    # 정지된 계정 차단(관리자 기능)
+    if db.is_user_suspended(uid):
+        session.clear()
+        if path.startswith("/api/"):
+            return jsonify({"error": "suspended", "message": "정지된 계정입니다. 관리자에게 문의하세요."}), 403
+        return redirect("/login?error=suspended")
     return None
 
 
@@ -830,6 +836,51 @@ def api_admin_set_user_plan(user_id):
         return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
     db.set_user_plan(user_id, plan_code)
     return jsonify(db.get_usage(user_id))
+
+
+@app.route("/api/admin/users/<int:user_id>/suspend", methods=["POST"])
+def api_admin_suspend_user(user_id):
+    """계정 정지/해제(관리자). 관리자·본인 계정은 보호."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    target = db.get_user_by_id(user_id)
+    if not target:
+        return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
+    me = current_user()
+    if is_admin(target) or (me and me["id"] == user_id):
+        return jsonify({"error": "관리자/본인 계정은 정지할 수 없습니다"}), 400
+    suspended = bool((request.json or {}).get("suspended", True))
+    db.set_user_suspended(user_id, suspended)
+    return jsonify({"ok": True, "suspended": suspended})
+
+
+@app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
+def api_admin_delete_user(user_id):
+    """계정 + 해당 사용자의 모든 데이터 삭제(관리자). 관리자·본인 계정은 보호. 되돌릴 수 없음."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    target = db.get_user_by_id(user_id)
+    if not target:
+        return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
+    me = current_user()
+    if is_admin(target) or (me and me["id"] == user_id):
+        return jsonify({"error": "관리자/본인 계정은 삭제할 수 없습니다"}), 400
+    db.delete_user(user_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/users/<int:user_id>/detail", methods=["GET"])
+def api_admin_user_detail(user_id):
+    """사용자 상세(기본정보 + 요금제/콘텐츠·AI 사용량 + 결제 내역)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    d = db.admin_user_detail(user_id)
+    if not d:
+        return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
+    return jsonify(d)
 
 
 # ── API: Admin - DB 백업 ───────────────────────────────

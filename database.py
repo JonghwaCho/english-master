@@ -382,6 +382,9 @@ def _migrate_email(conn):
         conn.execute("ALTER TABLE users ADD COLUMN reset_token TEXT")
         conn.execute("ALTER TABLE users ADD COLUMN reset_sent_at TEXT")
 
+    # 계정 정지 플래그 (관리자 기능)
+    _add_col(conn, "users", "suspended", "INTEGER DEFAULT 0")
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
@@ -1455,6 +1458,7 @@ def admin_list_users():
     conn = get_conn()
     rows = conn.execute("""
         SELECT u.id, u.email, u.name, u.created_at,
+               COALESCE(u.suspended, 0) AS suspended,
                (u.google_id IS NOT NULL) AS has_google,
                (u.ai_key IS NOT NULL AND u.ai_key != '') AS has_ai_key,
                (SELECT COUNT(*) FROM videos    WHERE user_id=u.id) AS videos,
@@ -1487,6 +1491,73 @@ def admin_global_stats():
     }
     conn.close()
     return stats
+
+
+# 사용자별 데이터가 들어 있는 테이블(계정 삭제 시 함께 정리). 전역 캐시(word_meanings/
+# ai_cache)는 공유 자원이라 제외한다.
+_USER_SCOPED_TABLES = (
+    "sentences", "reviews", "study_log", "videos", "categories", "words",
+    "playlists", "content_registrations", "ai_usage_log", "payments",
+)
+
+
+def is_user_suspended(user_id):
+    conn = get_conn()
+    row = conn.execute("SELECT COALESCE(suspended,0) AS s FROM users WHERE id=?",
+                       (user_id,)).fetchone()
+    conn.close()
+    return bool(row and row["s"])
+
+
+def set_user_suspended(user_id, suspended):
+    """관리자: 계정 정지/해제."""
+    conn = get_conn()
+    cur = conn.execute("UPDATE users SET suspended=? WHERE id=?",
+                       (1 if suspended else 0, user_id))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def delete_user(user_id):
+    """관리자: 사용자와 그 사용자의 모든 데이터를 삭제한다.
+    사용자 범위 테이블 + 링크 테이블(playlist_videos/word_video_link)을 함께 정리.
+    전역 캐시(word_meanings/ai_cache)는 공유 자원이라 보존한다."""
+    conn = get_conn()
+    try:
+        # 링크 테이블: 이 사용자의 playlists/words/videos를 참조하는 행 제거
+        conn.execute(
+            "DELETE FROM playlist_videos WHERE playlist_id IN "
+            "(SELECT id FROM playlists WHERE user_id=?)", (user_id,))
+        conn.execute(
+            "DELETE FROM word_video_link WHERE word_id IN "
+            "(SELECT id FROM words WHERE user_id=?)", (user_id,))
+        for t in _USER_SCOPED_TABLES:
+            conn.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
+        cur = conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def admin_user_detail(user_id):
+    """관리자: 사용자 1명의 상세(기본정보 + 콘텐츠/AI 사용량 + 결제 내역)."""
+    u = get_user_by_id(user_id)
+    if not u:
+        return None
+    return {
+        "id": u["id"],
+        "email": u.get("email"),
+        "name": u.get("name"),
+        "created_at": u.get("created_at"),
+        "suspended": bool(u.get("suspended")),
+        "has_google": bool(u.get("google_id")),
+        "has_ai_key": bool(u.get("ai_key")),
+        "plan": get_usage(user_id),
+        "ai_usage": get_ai_usage(user_id),
+        "payments": list_payments(user_id=user_id, limit=20),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════

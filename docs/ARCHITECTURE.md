@@ -261,6 +261,7 @@ backdrop-filter: blur(12px)
 - **세션 쿠키 보안**: `HttpOnly` + `SameSite=Lax`, 프로덕션은 `Secure`(`COOKIE_SECURE=1`).
   `Lax`는 구글 OAuth 콜백 복귀와 호환(최상위 GET에 쿠키 전송).
 - **로그인 brute-force 방지**: IP 기준 인메모리 레이트리밋(15분 창 8회 초과 시 429).
+- **계정 정지/삭제(관리자)**: `users.suspended` → `before_request`에서 세션 클리어+차단(API 403 `suspended`). 삭제는 `delete_user()`가 사용자 범위 10개 테이블+링크 테이블을 정리(전역 캐시 보존). **관리자·본인 계정은 정지·삭제 불가**(`is_admin` 검증, 락아웃 방지).
   `--workers 1` 전제 — 확장 시 공유 저장소(Redis) 필요.
 - HTTPS 강제 (Fly.io `force_https`)
 
