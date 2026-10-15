@@ -34,6 +34,7 @@
 | 실결제(B) | 토스페이먼츠 단건 결제(1개월 이용권) → 승인 후 `set_user_plan()` 자동 부여 | 2026-10-15 |
 | 환불/취소(B) | 관리자 결제 취소(토스 cancel API) + 요금제 회수(free 강등) | 2026-10-15 |
 | 관리자 확장 | 사용자 정지/해제·삭제(데이터 포함)·상세 조회 | 2026-10-15 |
+| 자동 정기결제(B) | 토스 빌링키 등록 → 매월 자동 청구·갱신, 실패 재시도/해지 | 2026-10-15 |
 
 ### ⬜ 남은 일 (우선순위별)
 
@@ -43,7 +44,7 @@
 | 항목 | 설명 | 의존성 |
 |------|------|--------|
 | ~~실결제(PG) 연동~~ ✅ | 토스페이먼츠 **단건 1개월 이용권** 구현 — 승인 후 `set_user_plan()` 자동 부여. **완료(2026-10-15)**. 운영 키 교체·사업자 심사만 남음 | 토스 운영 키 |
-| 자동 정기결제(빌링) | 카드 등록(빌링키) → 매월 자동 청구·자동 갱신. 지금은 매월 수동 재결제 | 토스 빌링 계약 |
+| ~~자동 정기결제(빌링)~~ ✅ | 카드 등록(빌링키) → 매월 자동 청구·갱신, 실패 재시도/해지 — **완료(2026-10-15)** | 토스 빌링 이용 |
 
 **C. 비용·운영**
 | 항목 | 설명 | 의존성 |
@@ -64,6 +65,25 @@
 ---
 
 ## 결정 기록
+
+### 2026-10-15 · 자동 정기결제 (빌링, B)
+
+- **배경**: 단건 결제는 매월 사용자가 수동 재결제해야 해 이탈이 크다. 구독형 SaaS에 맞는 **자동 갱신**을 추가한다.
+- **결정**: 토스 **빌링키** 방식. 카드 등록(`requestBillingAuth`) → 서버가 빌링키 발급·보관 → **첫 달 즉시 청구 후 구독 active** → 백그라운드 스케줄러가 **매월 자동 청구·요금제 연장**. 실패 시 재시도, 3회 연속 실패면 자동 해지.
+- **이유/철학**:
+  - *첫 청구 성공해야 활성화*: 카드 등록만 되고 청구 실패하면 구독을 켜지 않음(요금제 미부여) → "등록=이용"의 혼선 방지.
+  - *서버가 스케줄 소유*: 토스는 스케줄링을 제공하지 않으므로 `_billing_loop`가 매일 '예정일 지난' 구독을 직접 청구(기존 백업/동기화 루프와 동일 패턴, 단일 워커 1회).
+  - *customerKey 고정·검증*: 사용자별 고정 `billing_customer_key`를 저장하고, 카드등록 콜백의 customerKey가 그 값과 일치할 때만 빌링키를 발급(타인·변조 차단). 빌링키-customerKey 불일치는 토스가 `NOT_MATCHES_CUSTOMER_KEY`로도 막아줌.
+  - *빌링키 비노출*: 빌링키는 카드 청구 권한이라 **프론트에 절대 노출 안 함**(`/api/billing/subscription`은 `has_billing_key` 불리언만). 서버에서만 사용.
+  - *해지는 관대하게*: 해지 시 미래 청구만 중단하고 **이미 결제한 기간은 유지**(환불 아님). 단순·공정.
+  - *실패 처리*: 청구 실패 → `past_due`로 두고 +1일 재시도, **3회 연속 실패면 canceled**(카드 만료 등 영구 실패에 무한 재시도 방지).
+- **대안(기각)**: 단건 유지(이탈 큼 → 자동결제 추가, 단 단건도 **병행 제공**), 등록 즉시 활성화(청구 실패 시 무료 제공 악용 → 첫 청구 성공 필수), 무한 재시도(비용·계정 꼬임 → 3회 상한).
+- **구현**:
+  - `database.py`: users에 `billing_key/billing_customer_key/sub_plan_code/sub_status/sub_next_charge_at/sub_started_at/sub_retry`. `get_or_create_billing_customer_key`, `save_subscription`, `cancel_subscription`, `advance_subscription`, `mark_subscription_retry`(3회→canceled), `due_subscriptions`, `next_charge_time_utc`, `get_subscription`(빌링키 비노출). `create_payment_order(kind)`, `payments.kind='billing'`.
+  - `server.py`: `_toss_issue_billing_key`·`_toss_billing_charge`·`_billing_charge_once`(청구+요금제 부여+원장), `_billing_loop`(매일, `ENABLE_BILLING`). `/api/billing/subscribe`(customerKey 발급), `/api/billing/auth-confirm`(빌링키 발급→첫 청구→active), `/api/billing/cancel-subscription`, `/api/billing/subscription`.
+  - `index.html`: 업그레이드 모달에 "자동결제" 버튼(단건 "1회 결제"와 병행) + 구독 배너/해지 + `?sub=` 토스트. `admin.html`: 사용자 상세에 구독 상태.
+- **검증**: 잘못된 customerKey 거부(키 미발급), 카드등록→첫 청구→active·요금제 부여·billing 원장 DONE, `/subscription` 빌링키 비노출, 갱신 청구, 3회 실패 후 canceled, 해지 후 미청구 — 테스트 전부 통과.
+- **상태**: ✅ 구현·검증(청구 모킹). 운영은 토스 **자동결제 사용 신청**(상점 설정)·운영 키 필요. 다음: 결제수단 변경(카드 교체), 영수증/세금계산서.
 
 ### 2026-10-15 · 관리자 기능 확장 (정지 / 삭제 / 상세)
 

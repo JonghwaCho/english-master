@@ -1128,6 +1128,89 @@ def _toss_cancel(payment_key, reason):
         return json_lib.loads(resp.read().decode())
 
 
+def _toss_basic_header():
+    secret = _toss_settings()["secret_key"]
+    return "Basic " + base64.b64encode((secret + ":").encode()).decode()
+
+
+def _toss_issue_billing_key(auth_key, customer_key):
+    """자동결제 카드 등록 인증(authKey) → 빌링키 발급. 성공 시 {'billingKey':..., ...}."""
+    body = json_lib.dumps({"authKey": auth_key, "customerKey": customer_key}).encode()
+    req = urllib.request.Request(
+        TOSS_API_BASE + "/v1/billing/authorizations/issue", data=body, method="POST",
+        headers={"Authorization": _toss_basic_header(), "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json_lib.loads(resp.read().decode())
+
+
+def _toss_billing_charge(billing_key, payload):
+    """빌링키로 자동결제(청구). payload: customerKey/amount/orderId/orderName/customerEmail/customerName."""
+    body = json_lib.dumps(payload).encode()
+    req = urllib.request.Request(
+        TOSS_API_BASE + f"/v1/billing/{billing_key}", data=body, method="POST",
+        headers={"Authorization": _toss_basic_header(), "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json_lib.loads(resp.read().decode())
+
+
+def _billing_charge_once(user, plan, billing_key, customer_key):
+    """빌링키로 한 주기분을 청구하고 성공 시 요금제 부여·결제원장 기록. (성공?, 메시지)."""
+    amount = int(plan["price"])
+    order_id = db.create_payment_order(user["id"], plan["code"], amount, kind="billing")
+    payload = {
+        "customerKey": customer_key,
+        "amount": amount,
+        "orderId": order_id,
+        "orderName": f"English Master {plan['name']} 1개월(자동결제)",
+        "customerEmail": user.get("email", ""),
+        "customerName": (user.get("name") or (user.get("email", "").split("@")[0]))[:100],
+    }
+    try:
+        result = _toss_billing_charge(billing_key, payload)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode()[:200]
+        except Exception:
+            pass
+        db.mark_payment_failed(order_id, f"billing_http_{e.code}")
+        return False, f"{e.code}:{detail}"
+    except Exception as e:
+        db.mark_payment_failed(order_id, "billing_error")
+        return False, str(e)
+    if result.get("status") == "DONE":
+        db.mark_payment_done(order_id, result.get("paymentKey", ""), result.get("method", ""))
+        db.set_user_plan(user["id"], plan["code"])
+        return True, "ok"
+    db.mark_payment_failed(order_id, f"billing_status_{result.get('status')}")
+    return False, f"status:{result.get('status')}"
+
+
+def _billing_loop():
+    """매일 1회 자동결제 청구 스케줄러(토스는 스케줄링 미제공 → 직접 구현).
+    1시간마다 깨어나 '예정일 지난' 구독을 청구한다. 단일 워커 기준 중복 없음."""
+    while True:
+        try:
+            s = _toss_settings()
+            if _toss_ready(s):
+                for u in db.due_subscriptions():
+                    plan = db.get_plan(u["sub_plan_code"]) if u.get("sub_plan_code") else None
+                    if not plan or int(plan["price"]) <= 0:
+                        db.set_subscription_status(u["id"], "canceled")
+                        continue
+                    ok, msg = _billing_charge_once(
+                        db.get_user_by_id(u["id"]), plan, u["billing_key"], u["billing_customer_key"])
+                    if ok:
+                        db.advance_subscription(u["id"], db.next_charge_time_utc())
+                        logging.info(f"[Billing] renewed user {u['id']} plan {plan['code']}")
+                    else:
+                        st = db.mark_subscription_retry(u["id"])
+                        logging.warning(f"[Billing] charge failed user {u['id']} -> {st}: {msg}")
+        except Exception as e:
+            logging.warning(f"[Billing] loop error: {e}")
+        time.sleep(3600)
+
+
 @app.route("/api/billing/config")
 def api_billing_config():
     """프론트 결제창 초기화용. client_key는 공개값이므로 노출 가능(secret은 절대 노출 안 함)."""
@@ -1232,6 +1315,83 @@ def api_billing_history():
     if not u:
         return jsonify({"error": "unauthorized"}), 401
     return jsonify(db.list_payments(user_id=u["id"], limit=50))
+
+
+@app.route("/api/billing/subscription")
+def api_billing_subscription():
+    """내 자동결제 구독 상태."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify(db.get_subscription(u["id"]) or {"status": "none"})
+
+
+@app.route("/api/billing/subscribe", methods=["POST"])
+def api_billing_subscribe():
+    """자동결제 등록 시작: 카드 등록창(requestBillingAuth)에 넘길 정보를 반환."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    s = _toss_settings()
+    if not _toss_ready(s):
+        return jsonify({"error": "결제가 아직 설정되지 않았습니다. 관리자에게 문의하세요."}), 400
+    plan_code = (request.json or {}).get("plan_code", "").strip()
+    plan = db.get_plan(plan_code)
+    if not plan:
+        return jsonify({"error": "존재하지 않는 요금제입니다"}), 400
+    if int(plan["price"]) <= 0:
+        return jsonify({"error": "결제가 필요 없는 요금제입니다(무료)."}), 400
+    customer_key = db.get_or_create_billing_customer_key(u["id"])
+    base = request.host_url.rstrip("/")
+    return jsonify({
+        "clientKey": s["client_key"],
+        "customerKey": customer_key,
+        "successUrl": base + "/api/billing/auth-confirm?plan=" + urllib.parse.quote(plan_code),
+        "failUrl": base + "/api/billing/fail",
+    })
+
+
+@app.route("/api/billing/auth-confirm")
+def api_billing_auth_confirm():
+    """토스 카드등록 successUrl 콜백: 빌링키 발급 → 첫 달 청구 → 구독 활성화."""
+    u = current_user()
+    if not u:
+        return redirect("/login")
+    customer_key = request.args.get("customerKey", "")
+    auth_key = request.args.get("authKey", "")
+    plan_code = request.args.get("plan", "")
+    plan = db.get_plan(plan_code)
+    # customerKey는 이 사용자의 고정값과 일치해야 한다(불일치 차단)
+    expected_ck = db.get_or_create_billing_customer_key(u["id"])
+    if not plan or int(plan["price"]) <= 0 or customer_key != expected_ck or not auth_key:
+        return redirect("/?sub=fail&reason=auth")
+    # 1) 빌링키 발급
+    try:
+        issued = _toss_issue_billing_key(auth_key, customer_key)
+    except Exception as e:
+        logging.warning(f"[Billing] issue key error: {e}")
+        return redirect("/?sub=fail&reason=issue")
+    billing_key = issued.get("billingKey")
+    if not billing_key:
+        return redirect("/?sub=fail&reason=issue")
+    # 2) 첫 달 즉시 청구
+    ok, msg = _billing_charge_once(u, plan, billing_key, customer_key)
+    if not ok:
+        logging.warning(f"[Billing] first charge failed user {u['id']}: {msg}")
+        return redirect("/?sub=fail&reason=charge")
+    # 3) 구독 저장(active) + 다음 청구일 = +1개월
+    db.save_subscription(u["id"], plan_code, billing_key, customer_key, db.next_charge_time_utc())
+    return redirect(f"/?sub=1&plan={plan_code}")
+
+
+@app.route("/api/billing/cancel-subscription", methods=["POST"])
+def api_billing_cancel_subscription():
+    """자동결제 해지(미래 청구 중단). 현재 요금제는 주기 만료까지 유지."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    db.cancel_subscription(u["id"])
+    return jsonify({"ok": True})
 
 
 # ── API: Categories ────────────────────────────────────
@@ -2580,6 +2740,9 @@ def init_app():
     # 자동 DB 백업 스레드 (다중 워커 환경에서는 한 워커만 ENABLE_BACKUP=1로 두기)
     if os.environ.get("ENABLE_BACKUP", "1") == "1":
         threading.Thread(target=_backup_loop, daemon=True).start()
+    # 자동 정기결제(빌링) 청구 스레드 (다중 워커 환경에서는 한 워커만 ENABLE_BILLING=1로 두기)
+    if os.environ.get("ENABLE_BILLING", "1") == "1":
+        threading.Thread(target=_billing_loop, daemon=True).start()
 
 
 init_app()

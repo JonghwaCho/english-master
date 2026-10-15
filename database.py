@@ -385,6 +385,15 @@ def _migrate_email(conn):
     # 계정 정지 플래그 (관리자 기능)
     _add_col(conn, "users", "suspended", "INTEGER DEFAULT 0")
 
+    # 자동 정기결제(빌링) 구독 상태
+    _add_col(conn, "users", "billing_key", "TEXT")            # 토스 빌링키(카드 청구 권한 — 민감)
+    _add_col(conn, "users", "billing_customer_key", "TEXT")   # 사용자별 고정 customerKey
+    _add_col(conn, "users", "sub_plan_code", "TEXT")          # 구독 중인 요금제
+    _add_col(conn, "users", "sub_status", "TEXT DEFAULT 'none'")       # none|active|past_due|canceled
+    _add_col(conn, "users", "sub_next_charge_at", "TEXT")     # 다음 청구 예정(UTC)
+    _add_col(conn, "users", "sub_started_at", "TEXT")
+    _add_col(conn, "users", "sub_retry", "INTEGER DEFAULT 0") # 연속 청구 실패 횟수
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
@@ -1556,6 +1565,7 @@ def admin_user_detail(user_id):
         "has_ai_key": bool(u.get("ai_key")),
         "plan": get_usage(user_id),
         "ai_usage": get_ai_usage(user_id),
+        "subscription": get_subscription(user_id),
         "payments": list_payments(user_id=user_id, limit=20),
     }
 
@@ -1981,14 +1991,15 @@ def update_toss_settings(**fields):
     conn.close()
 
 
-def create_payment_order(user_id, plan_code, amount):
+def create_payment_order(user_id, plan_code, amount, kind="single"):
     """결제 시작: READY 상태 주문을 만들고 order_id를 반환한다.
-    amount(결제 금액)를 여기에 저장해 승인 콜백의 변조를 차단한다."""
+    amount(결제 금액)를 여기에 저장해 승인 콜백의 변조를 차단한다.
+    kind: 'single'(단건) | 'billing'(자동결제 청구)."""
     order_id = "em-" + uuid.uuid4().hex   # 35자, 토스 orderId 규칙(영문/숫자/-) 충족
     conn = get_conn()
     conn.execute(
-        "INSERT INTO payments (order_id, user_id, plan_code, amount, status) "
-        "VALUES (?,?,?,?, 'READY')", (order_id, user_id, plan_code, int(amount)))
+        "INSERT INTO payments (order_id, user_id, plan_code, amount, status, kind) "
+        "VALUES (?,?,?,?, 'READY', ?)", (order_id, user_id, plan_code, int(amount), kind))
     conn.commit()
     conn.close()
     return order_id
@@ -2046,6 +2057,107 @@ def list_payments(user_id=None, limit=100):
             "SELECT p.*, u.email AS email FROM payments p "
             "LEFT JOIN users u ON u.id = p.user_id ORDER BY p.id DESC LIMIT ?",
             (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── 자동 정기결제(빌링) 구독 ──────────────────────────────
+
+def next_charge_time_utc(from_dt=None):
+    """다음 청구 예정 시각(UTC, 'YYYY-MM-DD HH:MM:SS') = 기준 +1개월."""
+    return _add_months(from_dt or datetime.utcnow(), 1).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_or_create_billing_customer_key(user_id):
+    """사용자별 '고정' customerKey. 빌링키 발급·청구에 동일 값이 쓰여야 한다."""
+    conn = get_conn()
+    row = conn.execute("SELECT billing_customer_key FROM users WHERE id=?", (user_id,)).fetchone()
+    ck = (row["billing_customer_key"] if row else None) or ""
+    if not ck:
+        ck = "emc-" + uuid.uuid4().hex
+        conn.execute("UPDATE users SET billing_customer_key=? WHERE id=?", (ck, user_id))
+        conn.commit()
+    conn.close()
+    return ck
+
+
+def get_subscription(user_id):
+    """구독 상태 요약. 민감한 billing_key 원문은 반환하지 않는다."""
+    conn = get_conn()
+    r = conn.execute(
+        "SELECT sub_plan_code, sub_status, sub_next_charge_at, sub_started_at, "
+        "COALESCE(sub_retry,0) AS sub_retry, "
+        "(billing_key IS NOT NULL AND billing_key != '') AS has_billing_key "
+        "FROM users WHERE id=?", (user_id,)).fetchone()
+    conn.close()
+    if not r:
+        return None
+    d = dict(r)
+    d["status"] = d.get("sub_status") or "none"
+    d["plan_code"] = d.get("sub_plan_code")
+    return d
+
+
+def save_subscription(user_id, plan_code, billing_key, customer_key, next_charge_at):
+    """빌링키 발급·첫 청구 성공 후 구독을 active로 저장."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET billing_key=?, billing_customer_key=?, sub_plan_code=?, "
+        "sub_status='active', sub_started_at=datetime('now'), sub_next_charge_at=?, "
+        "sub_retry=0 WHERE id=?",
+        (billing_key, customer_key, plan_code, next_charge_at, user_id))
+    conn.commit()
+    conn.close()
+
+
+def cancel_subscription(user_id):
+    """구독 해지(미래 청구 중단). 현재 요금제는 주기 만료까지 유지. 성공 시 True."""
+    conn = get_conn()
+    cur = conn.execute(
+        "UPDATE users SET sub_status='canceled' WHERE id=? AND sub_status IN ('active','past_due')",
+        (user_id,))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def advance_subscription(user_id, next_charge_at):
+    """청구 성공 → 다음 청구일로 갱신하고 active·retry 0으로 복구."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET sub_next_charge_at=?, sub_status='active', sub_retry=0 WHERE id=?",
+        (next_charge_at, user_id))
+    conn.commit()
+    conn.close()
+
+
+def mark_subscription_retry(user_id, max_retry=3):
+    """청구 실패: retry+1. 한도 도달 시 canceled, 아니면 past_due(+1일 뒤 재시도). 새 상태 반환."""
+    conn = get_conn()
+    r = conn.execute("SELECT COALESCE(sub_retry,0) AS n FROM users WHERE id=?", (user_id,)).fetchone()
+    n = (r["n"] if r else 0) + 1
+    if n >= max_retry:
+        conn.execute("UPDATE users SET sub_status='canceled', sub_retry=? WHERE id=?", (n, user_id))
+        st = "canceled"
+    else:
+        conn.execute(
+            "UPDATE users SET sub_status='past_due', sub_retry=?, "
+            "sub_next_charge_at=datetime('now','+1 day') WHERE id=?", (n, user_id))
+        st = "past_due"
+    conn.commit()
+    conn.close()
+    return st
+
+
+def due_subscriptions():
+    """지금 청구할 구독(active/past_due & 빌링키 있음 & 예정일<=지금) 목록."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, email, name, sub_plan_code, billing_key, billing_customer_key "
+        "FROM users WHERE sub_status IN ('active','past_due') "
+        "AND billing_key IS NOT NULL AND billing_key != '' "
+        "AND sub_next_charge_at IS NOT NULL AND sub_next_charge_at <= datetime('now')"
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

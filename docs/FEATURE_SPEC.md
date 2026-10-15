@@ -53,6 +53,16 @@
 - **API**: `GET /api/billing/config`, `POST /api/billing/checkout`, `GET /api/billing/confirm`, `GET /api/billing/fail`, `GET /api/billing/history`, 관리자 `GET/PUT /api/admin/billing-settings`·`GET /api/admin/payments`
 - **환불/취소(관리자)**: `/admin` 결제 목록의 DONE 건 → "취소/환불" → 토스 전체 취소(`POST /v1/payments/{paymentKey}/cancel`) 후 `payments.status=CANCELED` + **요금제 free 회수**. 멱등(이미 CANCELED면 400). 부분환불·사용자 셀프환불은 백로그. API: `POST /api/admin/payments/<order_id>/cancel {reason}`
 
+### F-0.12 자동 정기결제 (빌링 / Subscription)
+- **흐름**: 업그레이드 모달 "자동결제" → `POST /api/billing/subscribe`(사용자 고정 customerKey 발급) → 토스 `requestBillingAuth`(카드 등록) → successUrl `GET /api/billing/auth-confirm?customerKey&authKey&plan`
+- **auth-confirm(서버)**: customerKey가 사용자 고정값과 일치해야 함 → 빌링키 발급(`POST /v1/billing/authorizations/issue`) → **첫 달 즉시 청구**(`POST /v1/billing/{billingKey}`) 성공 시에만 구독 active + 요금제 부여 + 다음 청구일 =+1개월
+- **자동 청구**: `_billing_loop`(매일, `ENABLE_BILLING`)가 `due_subscriptions`(active/past_due & 예정일<=now)를 플랜 현재가로 청구 → 성공 시 요금제 연장·다음 청구일 +1개월, 실패 시 past_due(+1일 재시도), **3회 연속 실패 → canceled**
+- **해지**: `POST /api/billing/cancel-subscription` → `sub_status=canceled`(미래 청구만 중단, 현재 기간 유지). 환불 아님
+- **보안**: 빌링키(카드 청구 권한)는 **프론트 비노출**(`/api/billing/subscription`은 `has_billing_key` 불리언만). customerKey 고정·검증. 결제 원장 `payments.kind='billing'`
+- **users 컬럼**: `billing_key, billing_customer_key, sub_plan_code, sub_status(none|active|past_due|canceled), sub_next_charge_at, sub_started_at, sub_retry`
+- **API**: `POST /api/billing/subscribe`, `GET /api/billing/auth-confirm`, `POST /api/billing/cancel-subscription`, `GET /api/billing/subscription`
+- **운영**: 토스 **자동결제(빌링) 사용 신청** + 운영 키 필요. 단건 결제와 **병행** 제공
+
 ### F-0.10 DB 백업 (Backup)
 - **자동 백업**: 백그라운드 스레드가 **매일 1회(UTC)** SQLite **온라인 백업 API**(`conn.backup`)로 **실행 중에도 일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 1시간마다 깨어나 "오늘 백업 없으면 1회" 수행. `ENABLE_BACKUP`(기본 1)로 on/off
 - **보관 정책**: 최신 **14개**만 유지(롤링 prune). 파일명이 타임스탬프라 이름 역순=최신순
@@ -471,6 +481,10 @@ process_review(item_id, item_type, correct):
 | GET | /api/billing/confirm | 토스 성공 콜백 → 금액검증·서버승인·요금제 부여 |
 | GET | /api/billing/fail | 토스 실패/취소 콜백 |
 | GET | /api/billing/history | 내 결제 내역 |
+| GET | /api/billing/subscription | 내 자동결제 구독 상태 |
+| POST | /api/billing/subscribe | 자동결제 등록 시작(카드 등록창 정보) |
+| GET | /api/billing/auth-confirm | 카드등록 콜백 → 빌링키 발급·첫 청구·활성화 |
+| POST | /api/billing/cancel-subscription | 자동결제 해지 |
 
 ---
 
@@ -495,6 +509,7 @@ process_review(item_id, item_type, correct):
 | v1.11 | 2026-10-15 | 실결제(토스페이먼츠) — 단건 1개월 이용권. 서버 주문·금액 변조 차단, 서버 승인(Basic), 멱등 부여, 업그레이드 모달·v2 SDK, 운영자 키 편집(테스트/운영), 결제 원장·관리자 내역 |
 | v1.12 | 2026-10-15 | 환불/취소 — 관리자 결제 취소(토스 cancel API, 전액) + 요금제 free 회수, 멱등 |
 | v1.13 | 2026-10-15 | 관리자 확장 — 사용자 정지/해제(전면 차단)·삭제(데이터 cascade, 캐시 보존)·상세 조회, 관리자/본인 보호 |
+| v1.14 | 2026-10-15 | 자동 정기결제(빌링) — 카드등록→빌링키→첫 청구→매월 자동 청구·갱신(스케줄러), 실패 3회 해지, 사용자 해지, 빌링키 비노출, 단건과 병행 |
 
 ---
 
