@@ -706,6 +706,31 @@ def _finalize_registration(db_video_id):
     return None
 
 
+def _ai_guard():
+    """서버 공용 키로 AI를 호출하기 '직전'에 호출하는 비용 보호 게이트.
+
+    반환 (err_response, record_uid):
+      - 개인 키 사용자  → (None, None)        : 자기 비용이므로 무제한·미기록
+      - 한도 초과       → (에러응답 429, None)  : 호출부는 그대로 return
+      - 통과(서버키)    → (None, user_id)      : 호출부는 성공 후 db.record_ai_usage(user_id)
+    """
+    u = current_user()
+    if not u:
+        return None, None  # before_request에서 이미 로그인 강제됨(방어적 처리)
+    if u.get("ai_key"):
+        return None, None  # 개인 키 → 제한·기록 대상 아님
+    usage = db.get_ai_usage(u["id"])
+    if usage["over"]:
+        if usage["reason"] == "daily":
+            msg = (f"오늘 사용 가능한 AI 분석 횟수({usage['daily_limit']}회)를 모두 사용했습니다. "
+                   f"내일 다시 시도하거나, 설정에서 개인 AI API 키를 등록하면 제한 없이 쓸 수 있습니다.")
+        else:
+            msg = (f"이번 달 AI 분석 횟수({usage['monthly_limit']}회)를 모두 사용했습니다. "
+                   f"설정에서 개인 AI API 키를 등록하거나 요금제를 업그레이드하세요.")
+        return (jsonify({"error": "ai_quota_exceeded", "message": msg, "usage": usage}), 429), None
+    return None, u["id"]
+
+
 @app.route("/admin")
 def admin_page():
     if not is_admin(current_user()):
@@ -759,6 +784,8 @@ def api_admin_update_plan(code):
     data = request.json or {}
     price = data.get("price")
     content_limit = data.get("content_limit")
+    ai_daily_limit = data.get("ai_daily_limit")
+    ai_monthly_limit = data.get("ai_monthly_limit")
     name = data.get("name")
     # 최소 유효성 검사
     if price is not None:
@@ -775,7 +802,17 @@ def api_admin_update_plan(code):
                 raise ValueError
         except (TypeError, ValueError):
             return jsonify({"error": "콘텐츠 한도는 0 이상의 정수여야 합니다"}), 400
-    db.update_plan(code, name=name, price=price, content_limit=content_limit)
+    # AI 한도는 -1(무제한) 이상. 0 = 서버키 AI 사용 불가.
+    for label, val in (("AI 1일 한도", ai_daily_limit), ("AI 1달 한도", ai_monthly_limit)):
+        if val is not None:
+            try:
+                if int(val) < -1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return jsonify({"error": f"{label}는 -1(무제한) 이상의 정수여야 합니다"}), 400
+    db.update_plan(code, name=name, price=price, content_limit=content_limit,
+                   ai_daily_limit=(None if ai_daily_limit is None else int(ai_daily_limit)),
+                   ai_monthly_limit=(None if ai_monthly_limit is None else int(ai_monthly_limit)))
     return jsonify(db.get_plan(code))
 
 
@@ -1766,12 +1803,27 @@ def api_ai_settings_get():
     if masked and len(masked) > 8:
         masked = masked[:4] + "****" + masked[-4:]
     server_available = bool(get_server_ai_settings().get("api_key"))
+    # 서버 공용 키로 동작하는 사용자에게는 현재 AI 사용량(일/월)도 함께 내려준다.
+    usage = db.get_ai_usage(u["id"]) if u else None
     return jsonify({
         "provider": (u or {}).get("ai_provider", ""),
         "api_key_masked": masked,
         "has_key": bool(user_key),
         "server_key_available": server_available,  # 개인 키 미설정 시 서버 키로 동작하는지
+        "using_personal_key": bool(user_key),
+        "usage": usage,                             # 개인 키 사용 시엔 참고용(제한 미적용)
     })
+
+
+@app.route("/api/ai/usage")
+def api_ai_usage():
+    """현재 사용자의 서버 공용 키 AI 사용량(일/월)을 반환한다."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    usage = db.get_ai_usage(u["id"])
+    usage["using_personal_key"] = bool(u.get("ai_key"))
+    return jsonify(usage)
 
 
 @app.route("/api/ai/settings", methods=["POST"])
@@ -1789,8 +1841,13 @@ def api_ai_test():
     settings = resolve_ai_settings()
     if not settings.get("api_key"):
         return jsonify({"error": "API 키가 설정되지 않았습니다 (개인 키 또는 서버 키 필요)"}), 400
+    err, rec_uid = _ai_guard()  # 서버키 테스트도 비용이므로 한도 적용(개인 키는 무제한)
+    if err:
+        return err
     try:
         result = call_ai(settings, "Say 'Hello! AI connection successful.' in one short sentence.")
+        if rec_uid:
+            db.record_ai_usage(rec_uid)
         return jsonify({"result": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1936,9 +1993,18 @@ def api_ai_action():
     if not prompt:
         return jsonify({"error": "알 수 없는 액션입니다"}), 400
 
+    # 2.5) 비용 보호 게이트 — 캐시 미스이므로 실제 AI 호출이 발생한다.
+    #      서버 공용 키 사용자만 한도 적용(개인 키는 무제한).
+    err, rec_uid = _ai_guard()
+    if err:
+        return err
+
     # 3) AI 호출
     try:
         result = call_ai(settings, prompt)
+        # 3.5) 서버키로 실제 호출이 성공했으면 사용량 1 기록(개인 키면 rec_uid=None)
+        if result and rec_uid:
+            db.record_ai_usage(rec_uid)
         # 4) 결과 캐싱 (퀴즈 제외)
         if result and action != "quiz":
             try:
@@ -1974,12 +2040,16 @@ def api_word_meaning():
     source = None
 
     # 2단계: AI API 우선 (한국어 뜻 제공) — 사용자 키 우선, 없으면 서버 키
+    #        단, 서버키 한도를 초과한 경우엔 AI를 건너뛰고 무료 사전 API로 폴백(단어 뜻은 계속 제공).
     settings = resolve_ai_settings()
-    if settings.get("api_key"):
+    err, rec_uid = _ai_guard()  # err 있으면 서버키 한도 초과 → AI 생략
+    if settings.get("api_key") and not err:
         try:
             prompt = f'영어 단어 "{word}"의 뜻을 한국어로 간결하게 설명해주세요. 형식: [품사] 한국어뜻1, 뜻2. 2줄 이내로.'
             meaning = call_ai(settings, prompt)
             source = "ai"
+            if rec_uid:  # 서버키로 실제 호출 성공 → 사용량 기록
+                db.record_ai_usage(rec_uid)
         except:
             pass
 

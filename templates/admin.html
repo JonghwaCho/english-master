@@ -244,6 +244,13 @@
           '<div class="field"><label>콘텐츠 한도</label><div class="row">' +
             '<input class="inp p-limit" type="number" min="0" step="1" value="' + p.content_limit + '">' +
             '<span class="suffix">개/' + (isLifetime ? '평생' : '월') + '</span></div></div>' +
+          '<div class="field"><label>AI 1일 한도</label><div class="row">' +
+            '<input class="inp p-ai-daily" type="number" min="-1" step="1" value="' + (p.ai_daily_limit != null ? p.ai_daily_limit : 20) + '">' +
+            '<span class="suffix">회/일</span></div></div>' +
+          '<div class="field"><label>AI 1달 한도</label><div class="row">' +
+            '<input class="inp p-ai-monthly" type="number" min="-1" step="1" value="' + (p.ai_monthly_limit != null ? p.ai_monthly_limit : 200) + '">' +
+            '<span class="suffix">회/월</span></div></div>' +
+          '<div class="ptype" style="margin:-2px 0 6px;">AI 한도: -1=무제한, 0=사용 불가 (서버 공용 키 사용자만 적용)</div>' +
           '<button class="btn" onclick="savePlan(this)">저장</button>' +
         '</div>';
       }).join('');
@@ -254,8 +261,14 @@
       var code = cardEl.getAttribute('data-code');
       var price = parseInt(cardEl.querySelector('.p-price').value, 10);
       var content_limit = parseInt(cardEl.querySelector('.p-limit').value, 10);
+      var ai_daily_limit = parseInt(cardEl.querySelector('.p-ai-daily').value, 10);
+      var ai_monthly_limit = parseInt(cardEl.querySelector('.p-ai-monthly').value, 10);
       if (isNaN(price) || price < 0 || isNaN(content_limit) || content_limit < 0) {
-        alert('가격과 한도는 0 이상의 정수여야 합니다');
+        alert('가격과 콘텐츠 한도는 0 이상의 정수여야 합니다');
+        return;
+      }
+      if (isNaN(ai_daily_limit) || ai_daily_limit < -1 || isNaN(ai_monthly_limit) || ai_monthly_limit < -1) {
+        alert('AI 한도는 -1(무제한) 이상의 정수여야 합니다');
         return;
       }
       btn.disabled = true;
@@ -265,7 +278,7 @@
         var res = await fetch('/api/admin/plans/' + encodeURIComponent(code), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ price: price, content_limit: content_limit }),
+          body: JSON.stringify({ price: price, content_limit: content_limit, ai_daily_limit: ai_daily_limit, ai_monthly_limit: ai_monthly_limit }),
         });
         if (!res.ok) throw new Error((await res.json()).error || '저장 실패');
         var updated = await res.json();

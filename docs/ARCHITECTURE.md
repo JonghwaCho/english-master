@@ -135,6 +135,9 @@ english-master/
 | word_meanings | 단어 뜻 캐시 | word, meaning, source |
 | word_video_link | 단어-영상 출처 연결 | word_id, video_id |
 | ai_cache | AI 결과 캐시 | sentence_text, action, result |
+| plans | 요금제 정의(관리자 편집) | code, price, content_limit, **ai_daily_limit, ai_monthly_limit** |
+| content_registrations | 콘텐츠 등록 원장(할당량) | user_id, video_id, registered_at |
+| ai_usage_log | 서버 공용 키 AI 호출 원장(일/월 한도) | user_id, used_at(UTC) |
 
 ### 4.3 콘텐츠 유형 (content_type)
 
@@ -309,7 +312,8 @@ backdrop-filter: blur(12px)
 - ✅ 요금제·콘텐츠 등록 할당량 — 아래 11.5 참조
 - ✅ 이메일 인증 — 아래 11.6 참조
 - ✅ 플레이리스트 동기화 영상 할당량 정책 — 미적용(무제한)으로 **결정**(11.5 참조)
-- 남은 과제: **실결제(PG) 연동**(현재는 관리자 수동 부여), 비밀번호 재설정
+- ✅ AI 사용량 제한(서버 공용 키 비용 보호) — 아래 11.7 참조
+- 남은 과제: **실결제(PG) 연동**(현재는 관리자 수동 부여), DB 백업
 
 ### 11.5 요금제 · 콘텐츠 등록 할당량 (Billing / Quota)
 
@@ -330,7 +334,15 @@ backdrop-filter: blur(12px)
 - **dev 폴백**: SMTP 미설정/실패 시 인증 링크를 서버 로그에 출력(로컬은 응답에도 노출)해 설정 전에도 테스트 가능
 - **비밀번호 노출 금지**: 관리자 GET 응답은 `has_password` 불리언만 반환. PUT은 비밀번호가 비어 있지 않을 때만 갱신
 
+### 11.7 AI 사용량 제한 (서버 공용 키 비용 보호)
+
+- **문제**: 개인 키 없는 사용자는 **서버 공용 키**(`SERVER_AI_KEY`)로 AI를 쓰고 그 비용은 운영자가 전액 부담 → 상한 없으면 비용 폭탄.
+- **대상(과금 호출만 집계)**: `서버키 + 캐시 미스 + 호출 성공`만 `ai_usage_log`에 1 기록. **캐시 히트·무료 사전(dictionaryapi) 폴백·개인 키 호출·배경 워커(전역 캐시 생성)는 제외.**
+- **한도(`plans` 컬럼, 관리자 편집)**: `ai_daily_limit`/`ai_monthly_limit`. **-1=무제한, 0=사용 불가, 양수=허용 횟수**. 주기는 **캘린더 일/월(UTC)** — SQLite `datetime('now')`(UTC)과 `used_at`을 일치시켜 계산. 비용 안전 우선: 0을 '무제한' 아닌 '차단'으로 정의.
+- **마이그레이션**: 기존 `plans`에 AI 컬럼 ALTER 추가 후, ALTER 기본값(20/200)을 상위 요금제 권장값으로 backfill(관리자 커스텀 `content_limit` 등은 보존). `ai_usage_log`는 `(user_id, used_at)`·`(used_at)` 인덱스. `record_ai_usage()`가 ≈5% 확률로 40일 초과 기록 정리.
+- **enforcement**: `server._ai_guard()`가 호출 직전 게이트 — 개인키→무제한·미기록, 서버키 초과→**429 `ai_quota_exceeded`**, 통과→성공 시 기록. `/api/ai/action`(초과 429), `/api/ai/word-meaning`(초과 시 사전 폴백·은혜로운 저하), `/api/ai/test`(429)에 적용. `GET /api/ai/usage`로 잔여 조회, 설정 패널에 표시.
+
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-07-07 (요금제 할당량 + 이메일 인증: 운영자 편집형 SMTP, 미인증 로그인 차단, smtplib 발송)*
+*최종 업데이트: 2026-10-15 (AI 사용량 제한: 서버 공용 키 비용 보호 — 요금제별 일/월 호출 한도, 과금 호출만 원장 집계)*

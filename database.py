@@ -3,6 +3,7 @@ import os
 import hashlib
 import threading
 import calendar
+import random
 from datetime import datetime, timedelta
 
 # ── 현재 요청 사용자 컨텍스트 (멀티유저 격리) ──────────────
@@ -234,11 +235,16 @@ def init_db():
 # 기본 요금제 정의 (최초 1회 시드). 이후 값은 관리자 도구에서 변경 가능.
 # content_limit: 주기당 신규 콘텐츠 등록 허용 수
 # period_type: 'lifetime'(free, 평생 누적) | 'monthly'(구독 시작일 기준 매월 리셋)
+# ai_daily_limit / ai_monthly_limit: 서버 공용 키로 처리되는 AI 분석 호출의
+#   1일/1달(UTC) 허용 횟수. 개인 API 키 사용자는 자기 비용이므로 제한하지 않는다.
+#     -1 = 무제한, 0 = 사용 불가, 양수 = 허용 횟수
+#   (비용 안전을 위해 모호할 땐 '막힘' 쪽으로: 0은 무제한이 아니라 차단)
 DEFAULT_PLANS = [
-    ("free",    "무료",     0,     1, "lifetime", 0),
-    ("basic",   "베이직",   3000,  5, "monthly",  1),
-    ("premium", "프리미엄", 5000, 10, "monthly",  2),
-    ("max",     "맥스",     7000, 20, "monthly",  3),
+    # code, name, price, content_limit, period_type, sort_order, ai_daily, ai_monthly
+    ("free",    "무료",     0,     1, "lifetime", 0,  20,   200),
+    ("basic",   "베이직",   3000,  5, "monthly",  1,  80,  1500),
+    ("premium", "프리미엄", 5000, 10, "monthly",  2, 200,  4000),
+    ("max",     "맥스",     7000, 20, "monthly",  3, 500, 10000),
 ]
 
 
@@ -266,6 +272,8 @@ def _migrate_billing(conn):
             content_limit INTEGER NOT NULL,            -- 주기당 등록 허용 수
             period_type  TEXT NOT NULL DEFAULT 'monthly',  -- 'monthly' | 'lifetime'
             sort_order   INTEGER NOT NULL DEFAULT 0,
+            ai_daily_limit   INTEGER NOT NULL DEFAULT 20,   -- 서버키 AI 1일 허용(-1 무제한/0 차단)
+            ai_monthly_limit INTEGER NOT NULL DEFAULT 200,  -- 서버키 AI 1달 허용(-1 무제한/0 차단)
             updated_at   TEXT DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS content_registrations (
@@ -275,12 +283,36 @@ def _migrate_billing(conn):
             registered_at TEXT DEFAULT (datetime('now')),
             UNIQUE(user_id, video_id)
         );
+        -- 서버 공용 키로 처리된 AI 분석 호출 원장(UTC). 사용자별 일/월 한도 계산에 사용.
+        -- 캐시 히트/개인 키/무료 사전 API 호출은 기록하지 않는다(실제 과금 호출만).
+        CREATE TABLE IF NOT EXISTS ai_usage_log (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id  INTEGER NOT NULL,
+            used_at  TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_user_time ON ai_usage_log(user_id, used_at);
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_time ON ai_usage_log(used_at);
     """)
+
+    # 기존 DB(이미 plans 테이블이 있던 경우) AI 한도 컬럼 추가 + 알려진 요금제 권장값 backfill
+    pcols = [r["name"] for r in conn.execute("PRAGMA table_info(plans)").fetchall()]
+    ai_cols_added = False
+    if "ai_daily_limit" not in pcols:
+        conn.execute("ALTER TABLE plans ADD COLUMN ai_daily_limit INTEGER NOT NULL DEFAULT 20")
+        ai_cols_added = True
+    if "ai_monthly_limit" not in pcols:
+        conn.execute("ALTER TABLE plans ADD COLUMN ai_monthly_limit INTEGER NOT NULL DEFAULT 200")
+        ai_cols_added = True
+    if ai_cols_added:
+        # ALTER는 모든 기존 행에 동일 기본값(20/200)을 넣으므로, 상위 요금제는 권장값으로 보정
+        for code, _name, _price, _climit, _ptype, _sort, aid, aim in DEFAULT_PLANS:
+            conn.execute("UPDATE plans SET ai_daily_limit=?, ai_monthly_limit=? WHERE code=?",
+                         (aid, aim, code))
 
     if conn.execute("SELECT COUNT(*) FROM plans").fetchone()[0] == 0:
         conn.executemany(
-            "INSERT INTO plans (code, name, price, content_limit, period_type, sort_order) "
-            "VALUES (?,?,?,?,?,?)", DEFAULT_PLANS)
+            "INSERT INTO plans (code, name, price, content_limit, period_type, sort_order, "
+            "ai_daily_limit, ai_monthly_limit) VALUES (?,?,?,?,?,?,?,?)", DEFAULT_PLANS)
 
     # 최초 도입 시: 이미 등록된 기존 콘텐츠를 원장에 백필한다(등록일=영상 생성일).
     # 이렇게 해야 기존 사용자의 현재 사용량이 정확히 반영된다.
@@ -1431,8 +1463,10 @@ def get_plan(code):
     return dict(row) if row else None
 
 
-def update_plan(code, name=None, price=None, content_limit=None):
-    """관리자: 요금제의 이름/가격/콘텐츠 한도를 변경한다."""
+def update_plan(code, name=None, price=None, content_limit=None,
+                ai_daily_limit=None, ai_monthly_limit=None):
+    """관리자: 요금제의 이름/가격/콘텐츠 한도/ AI 일·월 한도를 변경한다.
+    AI 한도는 -1(무제한) 이상의 정수. 0이면 해당 요금제는 서버키 AI 사용 불가."""
     sets, params = [], []
     if name is not None:
         sets.append("name=?"); params.append(str(name).strip())
@@ -1440,6 +1474,10 @@ def update_plan(code, name=None, price=None, content_limit=None):
         sets.append("price=?"); params.append(max(0, int(price)))
     if content_limit is not None:
         sets.append("content_limit=?"); params.append(max(0, int(content_limit)))
+    if ai_daily_limit is not None:
+        sets.append("ai_daily_limit=?"); params.append(max(-1, int(ai_daily_limit)))
+    if ai_monthly_limit is not None:
+        sets.append("ai_monthly_limit=?"); params.append(max(-1, int(ai_monthly_limit)))
     if not sets:
         return False
     sets.append("updated_at=datetime('now')")
@@ -1561,6 +1599,75 @@ def undo_content_registration(video_id):
                  (_uid(), video_id))
     conn.commit()
     conn.close()
+
+
+# ── AI 사용량(서버 공용 키 비용 보호) ──────────────────────
+# 서버가 제공하는 공용 AI 키로 처리되는 분석 호출만 원장에 기록하고,
+# 요금제별 일/월 한도로 비용 폭탄을 방지한다. 개인 키 사용자는 자기 비용이므로 제한 없음.
+
+def record_ai_usage(user_id):
+    """서버 공용 키로 AI를 1회 호출했음을 원장에 기록(UTC).
+    실제 과금이 발생한 호출(캐시 미스 + 호출 성공, 서버키)만 호출부에서 기록한다."""
+    if not user_id:
+        return
+    conn = get_conn()
+    try:
+        conn.execute("INSERT INTO ai_usage_log (user_id) VALUES (?)", (user_id,))
+        # 원장이 무한정 커지지 않도록 가끔(≈5%) 오래된 기록(40일 초과)을 정리.
+        # 월 한도는 당월만 보므로 40일이면 충분하다.
+        if random.random() < 0.05:
+            conn.execute("DELETE FROM ai_usage_log WHERE used_at < datetime('now','-40 days')")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_ai_usage(user_id):
+    """사용자의 서버 공용 키 AI 호출 사용량(UTC 일/월 기준)을 계산한다.
+    한도 규칙: -1 = 무제한, 0 = 사용 불가, 양수 = 허용 횟수.
+    반환: plan_code, plan_name, daily_limit, monthly_limit, daily_count,
+          monthly_count, daily_remaining, monthly_remaining(-1=무제한),
+          daily_over, monthly_over, over(bool), unlimited(bool), reason('daily'|'monthly'|None)."""
+    user = get_user_by_id(user_id)
+    plan_code = (user or {}).get("plan_code") or "free"
+    plan = get_plan(plan_code) or get_plan("free") or {}
+    daily_limit = plan.get("ai_daily_limit", 20)
+    monthly_limit = plan.get("ai_monthly_limit", 200)
+
+    conn = get_conn()
+    # SQLite의 datetime('now')/strftime(..., 'now')는 UTC 기준 → used_at(UTC)과 일관.
+    daily_count = conn.execute(
+        "SELECT COUNT(*) FROM ai_usage_log "
+        "WHERE user_id=? AND used_at >= strftime('%Y-%m-%d 00:00:00','now')",
+        (user_id,)).fetchone()[0]
+    monthly_count = conn.execute(
+        "SELECT COUNT(*) FROM ai_usage_log "
+        "WHERE user_id=? AND strftime('%Y-%m', used_at) = strftime('%Y-%m','now')",
+        (user_id,)).fetchone()[0]
+    conn.close()
+
+    daily_over = daily_limit >= 0 and daily_count >= daily_limit
+    monthly_over = monthly_limit >= 0 and monthly_count >= monthly_limit
+    over = daily_over or monthly_over
+
+    def _rem(limit, count):
+        return -1 if limit < 0 else max(0, limit - count)
+
+    return {
+        "plan_code": plan.get("code", plan_code),
+        "plan_name": plan.get("name", plan_code),
+        "daily_limit": daily_limit,
+        "monthly_limit": monthly_limit,
+        "daily_count": daily_count,
+        "monthly_count": monthly_count,
+        "daily_remaining": _rem(daily_limit, daily_count),
+        "monthly_remaining": _rem(monthly_limit, monthly_count),
+        "daily_over": daily_over,
+        "monthly_over": monthly_over,
+        "over": over,
+        "unlimited": daily_limit < 0 and monthly_limit < 0,
+        "reason": ("daily" if daily_over else ("monthly" if monthly_over else None)),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════

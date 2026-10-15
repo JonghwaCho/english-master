@@ -1415,6 +1415,10 @@ async function api(url, opts = {}) {
   if (data && data.error === 'quota_exceeded') {
     data.error = data.message || '콘텐츠 등록 한도를 초과했습니다.';
     if (typeof refreshPlanBadge === 'function') refreshPlanBadge();
+  } else if (data && data.error === 'ai_quota_exceeded') {
+    // AI 사용량 초과(429): 안내 문구를 error로 노출(각 AI 호출부가 res.error를 그대로 표시)
+    data.error = data.message || 'AI 분석 사용량을 초과했습니다.';
+    if (typeof refreshAiUsage === 'function') refreshAiUsage();
   } else if (opts.method === 'POST' && !(data && data.error) &&
              (url.indexOf('/api/videos') === 0 || url.indexOf('/api/content/') === 0) &&
              url.indexOf('/preview') === -1) {
@@ -5446,12 +5450,42 @@ async function loadAISettings() {
     const statusEl = document.getElementById('ai-key-status');
     if (statusEl) {
       if (s.has_key) {
-        statusEl.innerHTML = '<span style="color:var(--green);">✔ 내 개인 API 키 사용 중</span>';
+        statusEl.innerHTML = '<span style="color:var(--green);">✔ 내 개인 API 키 사용 중 (사용량 제한 없음)</span>';
       } else if (s.server_key_available) {
-        statusEl.innerHTML = '<span style="color:var(--cyan);">🔑 서버 기본 키로 동작 중 (개인 키 없이 사용 가능)</span>';
+        statusEl.innerHTML = '<span style="color:var(--cyan);">🔑 서버 기본 키로 동작 중 (개인 키 없이 사용 가능)</span>' +
+          renderAiUsageLine(s.usage);
       } else {
         statusEl.innerHTML = '<span style="color:var(--amber);">⚠ 개인 API 키를 설정해야 AI 기능을 쓸 수 있습니다</span>';
       }
+    }
+  } catch(e) {}
+}
+
+// 서버 공용 키 사용자의 남은 AI 분석 횟수 안내 문구 생성(-1=무제한)
+function renderAiUsageLine(usage) {
+  if (!usage || usage.using_personal_key) return '';
+  function part(label, remaining, limit) {
+    if (limit < 0) return label + ' 무제한';
+    return label + ' ' + Math.max(0, remaining) + '/' + limit + '회';
+  }
+  var low = (usage.daily_limit >= 0 && usage.daily_remaining <= 3) ||
+            (usage.monthly_limit >= 0 && usage.monthly_remaining <= 10);
+  var color = usage.over ? 'var(--red)' : (low ? 'var(--amber)' : 'var(--text3)');
+  return '<div style="margin-top:4px;font-size:12px;color:' + color + ';">' +
+    '🤖 남은 AI 분석 — 오늘 ' + part('', usage.daily_remaining, usage.daily_limit) +
+    ' · 이번 달 ' + part('', usage.monthly_remaining, usage.monthly_limit) + '</div>';
+}
+
+// 사용량 초과/변동 시 설정 패널의 안내를 갱신(열려 있지 않아도 안전)
+async function refreshAiUsage() {
+  try {
+    const statusEl = document.getElementById('ai-key-status');
+    if (!statusEl) return;
+    const u = await api('/api/ai/usage');
+    if (u && !u.error && !u.using_personal_key) {
+      // 기존 상태줄 뒤의 사용량 줄만 교체
+      const base = statusEl.querySelector('span') ? statusEl.querySelector('span').outerHTML : '';
+      statusEl.innerHTML = base + renderAiUsageLine(u);
     }
   } catch(e) {}
 }
@@ -5472,7 +5506,12 @@ async function testAIConnection() {
   resultEl.innerHTML = '<span style="color:var(--amber);">⏳ 테스트 중...</span>';
   try {
     const res = await api('/api/ai/test', { method: 'POST', body: {} });
-    resultEl.innerHTML = '<span style="color:var(--green);">✅ ' + res.result + '</span>';
+    if (res && res.error) {
+      resultEl.innerHTML = '<span style="color:var(--red);">❌ ' + res.error + '</span>';
+    } else {
+      resultEl.innerHTML = '<span style="color:var(--green);">✅ ' + res.result + '</span>';
+    }
+    if (typeof refreshAiUsage === 'function') refreshAiUsage();
   } catch(e) {
     resultEl.innerHTML = '<span style="color:var(--red);">❌ 연결 실패: ' + (e.message || e) + '</span>';
   }

@@ -290,6 +290,20 @@ process_review(item_id, item_type, correct):
 - 모르는 문장 마킹 시 큐에 추가
 - 백그라운드에서 literal, grammar, words 3종 AI 결과 사전 생성
 - 복습 시 즉시 표시 가능
+- **비용 한도 미적용**: 전역 캐시 1회 생성(모든 사용자 공유)이므로 F-4.5 사용자별 한도의 대상이 아니다. 콘텐츠 등록 할당량(F-0.8)으로 상위에서 유계.
+
+### F-4.5 AI 사용량 제한 (서버 공용 키 비용 보호)
+- **목적**: 개인 키 없는 사용자가 쓰는 **서버 공용 키** 비용 폭탄 방지. (왜/대안은 DECISION_LOG 2026-10-15 참조)
+- **대상(과금되는 호출만)**: `서버 공용 키` + `캐시 미스` + `호출 성공`인 경우만 1회 기록. **캐시 히트·무료 사전 폴백·개인 키 호출은 미기록·무제한.**
+- **한도(요금제별, 관리자 편집)**: `plans.ai_daily_limit`/`ai_monthly_limit`. 규칙 **-1=무제한, 0=사용 불가, 양수=허용 횟수**. 기본값 free 20/200, basic 80/1500, premium 200/4000, max 500/10000. 주기는 **캘린더 일/월(UTC)**.
+- **원장**: `ai_usage_log(user_id, used_at)` append-only(UTC). `record_ai_usage()`가 ≈5% 확률로 40일 초과 기록 정리.
+- **적용 경로 & 동작**:
+  - `POST /api/ai/action`: 캐시 미스면 호출 전 한도 검사 → 초과 시 **429 `ai_quota_exceeded`**(친절 메시지). 성공 시 1 기록.
+  - `GET /api/ai/word-meaning`: 초과 시 **AI 생략 후 무료 사전 폴백**(은혜로운 저하, 429 아님). AI 성공 시 1 기록.
+  - `POST /api/ai/test`: 서버키 테스트도 비용 → 초과 429, 성공 시 1 기록.
+  - `POST /api/ai/word-meanings-batch`: AI 미사용(사전 전용) → 한도 무관.
+- **API**: `GET /api/ai/usage`(일/월 사용량·잔여·초과·사유), `GET /api/ai/settings`에 `usage` 포함, 관리자 `PUT /api/admin/plans/<code>`에 `ai_daily_limit`/`ai_monthly_limit`(유효성 -1 이상).
+- **UI**: AI 설정 패널에 "남은 AI 분석 — 오늘 N/일 · 이번 달 N/월"(개인 키 사용 시 '제한 없음'). 초과 시 호출부가 429 안내 메시지 표시.
 
 ---
 
@@ -405,9 +419,12 @@ process_review(item_id, item_type, correct):
 ### AI API
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| POST | /api/ai/action | AI 액션 실행 |
-| GET | /api/ai/word-meaning | 단어 뜻 조회 |
-| POST | /api/ai/word-meanings-batch | 단어 뜻 일괄 조회 |
+| POST | /api/ai/action | AI 액션 실행 (서버키 한도 초과 시 429) |
+| GET | /api/ai/word-meaning | 단어 뜻 조회 (한도 초과 시 무료 사전 폴백) |
+| POST | /api/ai/word-meanings-batch | 단어 뜻 일괄 조회 (사전 전용, 한도 무관) |
+| POST | /api/ai/test | AI 연결 테스트 (서버키 한도 적용) |
+| GET | /api/ai/usage | 내 AI 사용량(일/월 사용·잔여·초과) |
+| GET | /api/ai/settings | AI 설정(+서버키 사용 시 usage 포함) |
 
 ---
 
@@ -427,8 +444,9 @@ process_review(item_id, item_type, correct):
 | v1.8 | 2026-07-07 | 비밀번호 재설정 — 재설정 메일(1시간 만료 토큰) → 새 비밀번호, 이메일 열거 방지 |
 | v1.6 | 2026-07-07 | 요금제·콘텐츠 등록 할당량 — free/basic/premium/max 4단계, 관리자 가격·한도 편집, 등록 원장 기반 카운트(삭제해도 유지), 구독 시작일 기준 월 리셋, 한도 초과 시 402 차단 |
 | v1.7 | 2026-07-07 | 이메일 인증 — 가입 시 인증 메일, 미인증 로그인 차단, 재발송, 관리자 SMTP 설정 편집(운영자별), smtplib 발송, 구글/최초운영자/기존사용자 자동 인증 |
+| v1.9 | 2026-10-15 | AI 사용량 제한 — 서버 공용 키 비용 보호. 요금제별 사용자 일/월 AI 호출 한도(-1 무제한/0 차단), 과금 호출만 원장 기록(캐시·개인키·사전폴백 제외), 초과 시 action 429·word-meaning 사전 폴백, `/api/ai/usage`, 관리자 한도 편집, 설정 패널 잔여 표시 |
 
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-07-07*
+*최종 업데이트: 2026-10-15*
