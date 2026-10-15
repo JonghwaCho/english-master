@@ -6377,11 +6377,120 @@ async function refreshPlanBadge() {
       '</div>' +
       '<div style="color:var(--text3);margin-top:3px;font-size:11px;">' +
         period + ' 콘텐츠 등록' + (full ? ' · 한도 도달' : ' · ' + u.remaining + '개 남음') +
-      '</div>';
+      '</div>' +
+      '<div style="color:var(--primary);margin-top:4px;font-size:11px;font-weight:600;">⬆ 요금제 변경/업그레이드</div>';
     el.style.display = 'block';
+    el.style.cursor = 'pointer';
+    el.onclick = function () { openUpgradeModal(); };
   } catch (e) {}
 }
 refreshPlanBadge();
+
+// ── 결제(Toss) · 요금제 업그레이드 ──────────────────────
+function loadTossSdk() {
+  return new Promise(function (resolve, reject) {
+    if (window.TossPayments) return resolve();
+    var sc = document.createElement('script');
+    sc.src = 'https://js.tosspayments.com/v2/standard';
+    sc.onload = resolve;
+    sc.onerror = function () { reject(new Error('결제 모듈을 불러오지 못했습니다')); };
+    document.head.appendChild(sc);
+  });
+}
+
+async function openUpgradeModal() {
+  var cfg, plan;
+  try {
+    cfg = await fetch('/api/billing/config').then(function (r) { return r.json(); });
+    plan = await fetch('/api/me/plan').then(function (r) { return r.json(); });
+  } catch (e) { toast('요금제 정보를 불러오지 못했습니다', 'error'); return; }
+
+  var curCode = plan && plan.usage ? plan.usage.plan_code : 'free';
+  var plans = (plan && plan.plans) || [];
+  var paid = plans.filter(function (p) { return (p.price || 0) > 0; });
+
+  var rows = paid.map(function (p) {
+    var isCur = p.code === curCode;
+    var btn = isCur
+      ? '<span style="color:var(--text3);font-size:12px;">현재 요금제</span>'
+      : (cfg.enabled
+          ? '<button style="padding:6px 14px;border:none;border-radius:8px;cursor:pointer;background:var(--primary,#3b82f6);color:#fff;font-weight:600;" onclick="startCheckout(\'' + p.code + '\')">결제하기</button>'
+          : '<span style="color:var(--text3);font-size:12px;">결제 준비 중</span>');
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;' + (isCur ? 'background:var(--bg);' : '') + '">' +
+      '<div><div style="font-weight:700;">' + escapeHtmlSafe(p.name) + '</div>' +
+      '<div style="color:var(--text3);font-size:12px;">콘텐츠 ' + p.content_limit + '개/월 · AI ' +
+        (p.ai_monthly_limit < 0 ? '무제한' : (p.ai_monthly_limit + '회/월')) + '</div></div>' +
+      '<div style="text-align:right;"><div style="font-weight:700;">' + (p.price || 0).toLocaleString() + '원<span style="color:var(--text3);font-weight:400;font-size:12px;">/월</span></div>' +
+      '<div style="margin-top:4px;">' + btn + '</div></div></div>';
+  }).join('');
+
+  var note = cfg.enabled
+    ? '<div style="color:var(--text3);font-size:11px;margin-top:6px;">결제 1회로 해당 요금제가 1개월 적용됩니다. 자동 갱신은 없습니다.</div>'
+    : '<div style="color:var(--amber,#f59e0b);font-size:11px;margin-top:6px;">⚠ 결제가 아직 준비되지 않았습니다(운영자 설정 대기).</div>';
+
+  var wrap = document.getElementById('upgrade-modal');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'upgrade-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+    document.body.appendChild(wrap);
+  }
+  wrap.innerHTML =
+    '<div style="background:var(--card,#fff);color:var(--text1);max-width:420px;width:100%;border-radius:14px;padding:20px;max-height:85vh;overflow:auto;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+        '<h3 style="margin:0;font-size:17px;">요금제 업그레이드</h3>' +
+        '<button onclick="document.getElementById(\'upgrade-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);">✕</button>' +
+      '</div>' + rows + note +
+    '</div>';
+}
+
+async function startCheckout(planCode) {
+  try {
+    var cfg = await fetch('/api/billing/config').then(function (r) { return r.json(); });
+    if (!cfg.enabled) { toast('결제가 아직 준비되지 않았습니다', 'error'); return; }
+    var order = await api('/api/billing/checkout', { method: 'POST', body: { plan_code: planCode } });
+    if (order.error) { toast(order.error, 'error'); return; }
+    await loadTossSdk();
+    var tp = TossPayments(cfg.client_key);
+    var payment = tp.payment({ customerKey: order.customerKey });
+    await payment.requestPayment({
+      method: 'CARD',
+      amount: { currency: 'KRW', value: order.amount },
+      orderId: order.orderId,
+      orderName: order.orderName,
+      successUrl: order.successUrl,
+      failUrl: order.failUrl,
+      customerEmail: order.customerEmail,
+      customerName: order.customerName,
+    });
+  } catch (e) {
+    if (e && (e.code === 'USER_CANCEL' || e.code === 'PAY_PROCESS_CANCELED')) return;  // 사용자가 닫음
+    toast('결제 오류: ' + (e && e.message ? e.message : e), 'error');
+  }
+}
+
+function escapeHtmlSafe(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// 결제 결과 토스트(토스 리다이렉트 복귀 시)
+(function () {
+  try {
+    var p = new URLSearchParams(location.search);
+    var paid = p.get('paid');
+    if (paid === '1') {
+      toast('결제가 완료되었습니다! 요금제가 적용되었어요.');
+      if (typeof refreshPlanBadge === 'function') refreshPlanBadge();
+      history.replaceState({}, '', location.pathname);
+    } else if (paid === 'fail') {
+      toast('결제가 취소되었거나 실패했습니다.', 'error');
+      history.replaceState({}, '', location.pathname);
+    }
+  } catch (e) {}
+})();
 
 // ── Init ───────────────────────────────────────────────
 loadDashboard().catch(function(e) { console.error('Dashboard init error:', e); });

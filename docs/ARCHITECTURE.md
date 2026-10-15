@@ -138,6 +138,7 @@ english-master/
 | plans | 요금제 정의(관리자 편집) | code, price, content_limit, **ai_daily_limit, ai_monthly_limit** |
 | content_registrations | 콘텐츠 등록 원장(할당량) | user_id, video_id, registered_at |
 | ai_usage_log | 서버 공용 키 AI 호출 원장(일/월 한도) | user_id, used_at(UTC) |
+| payments | 결제 주문 원장(단건 이용권) | order_id(UNIQUE), user_id, plan_code, amount, status, payment_key |
 
 ### 4.3 콘텐츠 유형 (content_type)
 
@@ -315,7 +316,8 @@ backdrop-filter: blur(12px)
 - ✅ 플레이리스트 동기화 영상 할당량 정책 — 미적용(무제한)으로 **결정**(11.5 참조)
 - ✅ AI 사용량 제한(서버 공용 키 비용 보호) — 아래 11.7 참조
 - ✅ DB 백업(자동 일일 + 관리자 수동/다운로드) — 아래 11.8 참조
-- 남은 과제: **실결제(PG) 연동**(현재는 관리자 수동 부여)
+- ✅ 실결제(토스페이먼츠 단건 1개월 이용권) — 아래 11.9 참조
+- 남은 과제: **자동 정기결제(빌링)**, 환불 처리(현재 토스 대시보드 수동)
 
 ### 11.5 요금제 · 콘텐츠 등록 할당량 (Billing / Quota)
 
@@ -352,7 +354,18 @@ backdrop-filter: blur(12px)
 - **관리자 API**: `GET/POST /api/admin/backups`, `GET /api/admin/backups/<name>/download`(`send_file`), `DELETE /api/admin/backups/<name>`. 파일명은 `database.backup_path_if_valid()`가 정규식으로 검증 → **경로탈출/임의 파일 접근 차단**.
 - **다층 방어**: 같은 볼륨 백업 = 앱 버그·실수 삭제 보호. **볼륨 유실** 대비는 (a) 관리자 다운로드(오프사이트) + (b) **Fly 볼륨 스냅샷**(`fly volumes snapshots`, 보존기간 `--snapshot-retention`). "백업=안전" 과신 금지.
 
+### 11.9 실결제 (Billing / Toss Payments)
+
+- **모델**: **단건 1개월 이용권**. 승인 성공 → `set_user_plan()`으로 요금제 1개월 부여(월주기 = 구매 시점). 자동 갱신(빌링)은 백로그.
+- **플로우**: `POST /api/billing/checkout`(서버가 요금제 가격으로 `payments` 주문 READY 생성) → 토스 v2 SDK `requestPayment` → successUrl `GET /api/billing/confirm`.
+- **보안 핵심**:
+  - **금액 변조 차단**: 콜백 `amount`를 서버 저장 주문 금액과 대조. 소유자·상태(READY) 검증. 불일치 → 승인 호출 없이 FAILED.
+  - **서버 승인**: `secret_key`로 `POST https://api.tosspayments.com/v1/payments/confirm`(Basic `base64(secretKey:)`). `client_key`만 프론트 노출.
+  - **멱등**: `mark_payment_done()`이 `READY→DONE` 단일 전이 → 중복 콜백에도 이중 부여/과금 없음.
+- **설정**: 토스 키는 `app_settings`에 저장(`/admin` 편집, secret 마스킹), env(`TOSS_CLIENT_KEY`/`TOSS_SECRET_KEY`) 시드. `_toss_settings()`가 DB→env 폴백.
+- **남은 것**: 운영 키 교체(사업자 심사), 환불/취소(현재 토스 대시보드 수동), 자동 정기결제(빌링).
+
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-10-15 (DB 백업: 일일 자동 SQLite 온라인 백업 + 관리자 수동/다운로드/삭제, 경로탈출 차단, Fly 스냅샷 보완)*
+*최종 업데이트: 2026-10-15 (실결제: 토스페이먼츠 단건 1개월 이용권 — 서버 주문·금액 변조 차단·서버 승인·멱등 부여, 운영자 키 편집)*

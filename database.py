@@ -4,6 +4,7 @@ import hashlib
 import threading
 import calendar
 import random
+import uuid
 from datetime import datetime, timedelta
 
 # ── 현재 요청 사용자 컨텍스트 (멀티유저 격리) ──────────────
@@ -296,6 +297,22 @@ def _migrate_billing(conn):
         );
         CREATE INDEX IF NOT EXISTS idx_ai_usage_user_time ON ai_usage_log(user_id, used_at);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_time ON ai_usage_log(used_at);
+        -- 결제 주문 원장(단건 1개월 이용권). order_id는 서버가 생성하고 결제 금액을
+        -- 여기에 저장해, 승인 시 콜백 amount와 대조해 '금액 변조'를 차단한다.
+        CREATE TABLE IF NOT EXISTS payments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id    TEXT UNIQUE NOT NULL,
+            user_id     INTEGER NOT NULL,
+            plan_code   TEXT NOT NULL,
+            amount      INTEGER NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'READY',  -- READY | DONE | FAILED
+            payment_key TEXT,
+            method      TEXT,
+            fail_reason TEXT,
+            created_at  TEXT DEFAULT (datetime('now')),
+            approved_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, id);
     """)
 
     # 기존 DB(이미 plans 테이블이 있던 경우) AI 한도 컬럼 추가 + 알려진 요금제 권장값 backfill
@@ -376,6 +393,18 @@ def _migrate_email(conn):
         }
         conn.executemany("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
                          list(seed.items()))
+
+    # 토스페이먼츠(결제) 설정 최초 시드(환경변수가 있으면 반영, 없으면 빈 값/off)
+    have_toss = conn.execute(
+        "SELECT COUNT(*) FROM app_settings WHERE key LIKE 'toss_%'").fetchone()[0]
+    if have_toss == 0:
+        toss_seed = {
+            "toss_enabled":    "1" if os.environ.get("TOSS_SECRET_KEY") else "0",
+            "toss_client_key": os.environ.get("TOSS_CLIENT_KEY", ""),
+            "toss_secret_key": os.environ.get("TOSS_SECRET_KEY", ""),
+        }
+        conn.executemany("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                         list(toss_seed.items()))
 
 
 def _migrate_multiuser(conn):
@@ -1827,6 +1856,103 @@ def update_email_settings(**fields):
             (mapping[k], val))
     conn.commit()
     conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  결제 (Billing / Toss Payments) — 단건 1개월 이용권
+# ══════════════════════════════════════════════════════════════════════
+
+TOSS_SETTING_KEYS = ("toss_enabled", "toss_client_key", "toss_secret_key")
+
+
+def get_toss_settings():
+    """토스 결제 설정(관리자 편집). secret_key는 서버에서만 사용."""
+    conn = get_conn()
+    ph = ",".join("?" * len(TOSS_SETTING_KEYS))
+    rows = conn.execute(
+        f"SELECT key, value FROM app_settings WHERE key IN ({ph})",
+        TOSS_SETTING_KEYS).fetchall()
+    conn.close()
+    d = {r["key"]: r["value"] for r in rows}
+    return {
+        "enabled": d.get("toss_enabled", "0") == "1",
+        "client_key": d.get("toss_client_key", "") or "",
+        "secret_key": d.get("toss_secret_key", "") or "",
+    }
+
+
+def update_toss_settings(**fields):
+    """관리자: 토스 결제 설정 부분 갱신. 허용 키: enabled(bool), client_key, secret_key.
+    (secret_key는 값이 있을 때만 넘기도록 호출부에서 제어 — 빈 값이면 기존 유지)"""
+    mapping = {"enabled": "toss_enabled", "client_key": "toss_client_key",
+               "secret_key": "toss_secret_key"}
+    conn = get_conn()
+    for k, v in fields.items():
+        if k not in mapping:
+            continue
+        val = ("1" if v else "0") if k == "enabled" else ("" if v is None else str(v).strip())
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (mapping[k], val))
+    conn.commit()
+    conn.close()
+
+
+def create_payment_order(user_id, plan_code, amount):
+    """결제 시작: READY 상태 주문을 만들고 order_id를 반환한다.
+    amount(결제 금액)를 여기에 저장해 승인 콜백의 변조를 차단한다."""
+    order_id = "em-" + uuid.uuid4().hex   # 35자, 토스 orderId 규칙(영문/숫자/-) 충족
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO payments (order_id, user_id, plan_code, amount, status) "
+        "VALUES (?,?,?,?, 'READY')", (order_id, user_id, plan_code, int(amount)))
+    conn.commit()
+    conn.close()
+    return order_id
+
+
+def get_payment_order(order_id):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM payments WHERE order_id=?", (order_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def mark_payment_done(order_id, payment_key, method=""):
+    """READY → DONE 로 전이(한 번만). 실제로 전이되면 True(멱등성: 중복 콜백 방지)."""
+    conn = get_conn()
+    cur = conn.execute(
+        "UPDATE payments SET status='DONE', payment_key=?, method=?, "
+        "approved_at=datetime('now') WHERE order_id=? AND status='READY'",
+        (payment_key, method, order_id))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def mark_payment_failed(order_id, reason=""):
+    """READY → FAILED. 이미 DONE이면 건드리지 않는다."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE payments SET status='FAILED', fail_reason=? "
+        "WHERE order_id=? AND status='READY'", (str(reason)[:300], order_id))
+    conn.commit()
+    conn.close()
+
+
+def list_payments(user_id=None, limit=100):
+    """결제 내역. user_id 지정 시 해당 사용자만, 아니면 전체(관리자, 이메일 포함)."""
+    conn = get_conn()
+    if user_id:
+        rows = conn.execute(
+            "SELECT * FROM payments WHERE user_id=? ORDER BY id DESC LIMIT ?",
+            (user_id, limit)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT p.*, u.email AS email FROM payments p "
+            "LEFT JOIN users u ON u.id = p.user_id ORDER BY p.id DESC LIMIT ?",
+            (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def set_verify_token(user_id, token):

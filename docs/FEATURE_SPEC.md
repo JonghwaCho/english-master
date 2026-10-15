@@ -39,6 +39,18 @@
 - **API**: `GET /api/me/plan`(내 사용량+요금제), 관리자 `GET /api/admin/plans`·`PUT /api/admin/plans/<code>`(가격·한도)·`PUT /api/admin/users/<id>/plan`(요금제 부여). PG(실결제) 연동은 다음 단계 — 현재는 관리자 수동 부여
 - **users 추가 컬럼**: `plan_code`(기본 'free'), `plan_started_at`(구독 시작일)
 
+### F-0.11 실결제 — 토스페이먼츠 단건 1개월 이용권 (Billing)
+- **모델**: 결제 1회 성공 → 해당 요금제 **1개월** 부여(`set_user_plan()`이 `plan_started_at`을 지금으로 → 콘텐츠/AI 월 한도가 구매 시점 기준 리셋). 자동 갱신 없음(백로그: 빌링)
+- **흐름**: 업그레이드 모달 → `POST /api/billing/checkout`(요금제 가격으로 **서버가 주문 생성**, READY) → 토스 v2 SDK `requestPayment` 결제창 → successUrl `GET /api/billing/confirm?paymentKey&orderId&amount`
+- **승인·보안(중요)**:
+  - 콜백 `amount`를 **서버 저장 주문 금액과 대조**(가격 변조 차단). 소유자·상태(READY) 검증. 불일치 시 승인 호출 없이 FAILED
+  - 서버가 `secret_key`로 **Basic 인증 승인 API**(`POST https://api.tosspayments.com/v1/payments/confirm`) 호출. `client_key`만 프론트 노출(`/api/billing/config`), `secret_key`는 절대 비노출
+  - **멱등**: 주문 `READY→DONE` 단일 전이로만 부여 → 중복 콜백에도 이중 부여 없음
+- **결과 UI**: 성공 `/?paid=1`(토스트+배지 갱신), 실패/취소 `/?paid=fail`
+- **설정(운영자)**: `/admin → 결제(Toss) 설정`에서 사용 on/off·client_key·secret_key(마스킹) 편집. env 시드(`TOSS_CLIENT_KEY`/`TOSS_SECRET_KEY`) 지원. 테스트 키(`test_ck_`/`test_sk_`) → 운영 키 무중단 교체
+- **원장**: `payments`(order_id UNIQUE, user_id, plan_code, amount, status READY|DONE|FAILED, payment_key, method, created_at, approved_at)
+- **API**: `GET /api/billing/config`, `POST /api/billing/checkout`, `GET /api/billing/confirm`, `GET /api/billing/fail`, `GET /api/billing/history`, 관리자 `GET/PUT /api/admin/billing-settings`·`GET /api/admin/payments`
+
 ### F-0.10 DB 백업 (Backup)
 - **자동 백업**: 백그라운드 스레드가 **매일 1회(UTC)** SQLite **온라인 백업 API**(`conn.backup`)로 **실행 중에도 일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 1시간마다 깨어나 "오늘 백업 없으면 1회" 수행. `ENABLE_BACKUP`(기본 1)로 on/off
 - **보관 정책**: 최신 **14개**만 유지(롤링 prune). 파일명이 타임스탬프라 이름 역순=최신순
@@ -442,6 +454,17 @@ process_review(item_id, item_type, correct):
 | GET/POST | /api/admin/backups | 백업 목록 / 즉시 백업 생성 |
 | GET | /api/admin/backups/:name/download | 백업 파일 다운로드 |
 | DELETE | /api/admin/backups/:name | 백업 파일 삭제 |
+| GET/PUT | /api/admin/billing-settings | 토스 결제 설정 조회·편집(secret 마스킹) |
+| GET | /api/admin/payments | 최근 결제 내역 |
+
+### 결제 API
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | /api/billing/config | 결제 활성 여부 + client_key(공개) |
+| POST | /api/billing/checkout | 주문 생성(요금제 가격, READY) |
+| GET | /api/billing/confirm | 토스 성공 콜백 → 금액검증·서버승인·요금제 부여 |
+| GET | /api/billing/fail | 토스 실패/취소 콜백 |
+| GET | /api/billing/history | 내 결제 내역 |
 
 ---
 
@@ -463,6 +486,7 @@ process_review(item_id, item_type, correct):
 | v1.7 | 2026-07-07 | 이메일 인증 — 가입 시 인증 메일, 미인증 로그인 차단, 재발송, 관리자 SMTP 설정 편집(운영자별), smtplib 발송, 구글/최초운영자/기존사용자 자동 인증 |
 | v1.9 | 2026-10-15 | AI 사용량 제한 — 서버 공용 키 비용 보호. 요금제별 사용자 일/월 AI 호출 한도(-1 무제한/0 차단), 과금 호출만 원장 기록(캐시·개인키·사전폴백 제외), 초과 시 action 429·word-meaning 사전 폴백, `/api/ai/usage`, 관리자 한도 편집, 설정 패널 잔여 표시 |
 | v1.10 | 2026-10-15 | DB 백업 — 매일 자동 SQLite 온라인 백업(최신 14개 롤링), 관리자 수동 백업·목록·다운로드(오프사이트)·삭제, 파일명 검증으로 경로탈출 차단, Fly 볼륨 스냅샷 보완 안내 |
+| v1.11 | 2026-10-15 | 실결제(토스페이먼츠) — 단건 1개월 이용권. 서버 주문·금액 변조 차단, 서버 승인(Basic), 멱등 부여, 업그레이드 모달·v2 SDK, 운영자 키 편집(테스트/운영), 결제 원장·관리자 내역 |
 
 ---
 

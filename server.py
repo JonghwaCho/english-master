@@ -11,6 +11,7 @@ import threading
 import urllib.request
 import urllib.parse
 import json as json_lib
+import base64
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, send_file, abort
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -883,6 +884,53 @@ def api_admin_delete_backup(name):
     return jsonify({"error": "존재하지 않거나 잘못된 백업 파일입니다"}), 404
 
 
+# ── API: Admin - 결제(Toss) 설정 ───────────────────────
+
+@app.route("/api/admin/billing-settings", methods=["GET"])
+def api_admin_billing_get():
+    """토스 결제 설정 조회. secret_key는 마스킹만(원문 비노출)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    s = db.get_toss_settings()
+    sk = s["secret_key"]
+    masked = (sk[:6] + "****" + sk[-4:]) if len(sk) > 12 else ("****" if sk else "")
+    return jsonify({
+        "enabled": s["enabled"],
+        "client_key": s["client_key"],
+        "has_secret": bool(sk),
+        "secret_key_masked": masked,
+    })
+
+
+@app.route("/api/admin/billing-settings", methods=["PUT"])
+def api_admin_billing_put():
+    """토스 결제 설정 변경. secret_key는 값이 있을 때만 갱신(빈 값이면 기존 유지)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.json or {}
+    fields = {}
+    if "enabled" in data:
+        fields["enabled"] = bool(data["enabled"])
+    if "client_key" in data:
+        fields["client_key"] = (data.get("client_key") or "").strip()
+    sk = data.get("secret_key")
+    if sk:
+        fields["secret_key"] = sk.strip()
+    db.update_toss_settings(**fields)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/payments", methods=["GET"])
+def api_admin_payments():
+    """최근 결제 내역(관리자)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(db.list_payments(limit=200))
+
+
 # ── API: Admin - 이메일(SMTP) 설정 ─────────────────────
 
 def _email_settings_public(s):
@@ -949,6 +997,148 @@ def api_my_plan():
         "usage": db.get_usage(uid),
         "plans": db.get_plans(),
     })
+
+
+# ── API: 결제 (Billing / Toss Payments) ─────────────────
+# 단건 "1개월 이용권": 결제 성공(서버 승인) 시 set_user_plan()으로 해당 요금제를 1개월 부여.
+# 보안 원칙: 금액은 서버가 만든 주문(payments)에 저장해 두고, 승인 콜백의 amount와
+#            반드시 대조한다. 승인은 secret_key로 서버에서만 호출한다.
+
+TOSS_API_BASE = "https://api.tosspayments.com"
+
+
+def _toss_settings():
+    """토스 설정(DB 우선, 비어 있으면 환경변수 폴백)."""
+    s = db.get_toss_settings()
+    if not s["client_key"]:
+        s["client_key"] = os.environ.get("TOSS_CLIENT_KEY", "")
+    if not s["secret_key"]:
+        s["secret_key"] = os.environ.get("TOSS_SECRET_KEY", "")
+    return s
+
+
+def _toss_ready(s=None):
+    s = s or _toss_settings()
+    return bool(s["enabled"] and s["client_key"] and s["secret_key"])
+
+
+def _toss_confirm(payment_key, order_id, amount):
+    """토스 결제 승인 API 호출(Basic 인증: base64(secretKey + ':')). 성공 시 Payment 객체(dict)."""
+    secret = _toss_settings()["secret_key"]
+    token = base64.b64encode((secret + ":").encode()).decode()
+    body = json_lib.dumps({"paymentKey": payment_key, "orderId": order_id,
+                           "amount": int(amount)}).encode()
+    req = urllib.request.Request(
+        TOSS_API_BASE + "/v1/payments/confirm", data=body, method="POST",
+        headers={"Authorization": "Basic " + token, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json_lib.loads(resp.read().decode())
+
+
+@app.route("/api/billing/config")
+def api_billing_config():
+    """프론트 결제창 초기화용. client_key는 공개값이므로 노출 가능(secret은 절대 노출 안 함)."""
+    s = _toss_settings()
+    ready = _toss_ready(s)
+    return jsonify({"enabled": ready, "client_key": s["client_key"] if ready else ""})
+
+
+@app.route("/api/billing/checkout", methods=["POST"])
+def api_billing_checkout():
+    """결제 시작: 요금제 가격으로 주문(READY) 생성 후 결제창에 넘길 정보를 반환."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    s = _toss_settings()
+    if not _toss_ready(s):
+        return jsonify({"error": "결제가 아직 설정되지 않았습니다. 관리자에게 문의하세요."}), 400
+    plan_code = (request.json or {}).get("plan_code", "").strip()
+    plan = db.get_plan(plan_code)
+    if not plan:
+        return jsonify({"error": "존재하지 않는 요금제입니다"}), 400
+    amount = int(plan["price"])
+    if amount <= 0:
+        return jsonify({"error": "결제가 필요 없는 요금제입니다(무료)."}), 400
+    order_id = db.create_payment_order(u["id"], plan_code, amount)
+    base = request.host_url.rstrip("/")
+    return jsonify({
+        "clientKey": s["client_key"],
+        "customerKey": "em-" + secrets.token_urlsafe(16),  # 무작위 고유값(2~50자)
+        "orderId": order_id,
+        "orderName": f"English Master {plan['name']} 1개월",
+        "amount": amount,
+        "customerEmail": u.get("email", ""),
+        "customerName": (u.get("name") or (u.get("email", "").split("@")[0]))[:100],
+        "successUrl": base + "/api/billing/confirm",
+        "failUrl": base + "/api/billing/fail",
+    })
+
+
+@app.route("/api/billing/confirm")
+def api_billing_confirm():
+    """토스 successUrl 콜백. 주문/금액 검증 → 서버 승인 → 성공 시 요금제 부여."""
+    u = current_user()
+    if not u:
+        return redirect("/login")
+    payment_key = request.args.get("paymentKey", "")
+    order_id = request.args.get("orderId", "")
+    order = db.get_payment_order(order_id)
+
+    # 1) 주문 존재 + 소유자 일치
+    if not order or order["user_id"] != u["id"]:
+        return redirect("/?paid=fail&reason=order")
+    # 2) 이미 처리된 주문(중복 콜백) → 성공으로 간주
+    if order["status"] == "DONE":
+        return redirect(f"/?paid=1&plan={order['plan_code']}")
+    # 3) 금액 변조 방지: 콜백 amount == 저장된 주문 금액, 상태는 READY
+    try:
+        amt = int(request.args.get("amount", ""))
+    except (TypeError, ValueError):
+        amt = -1
+    if order["status"] != "READY" or amt != order["amount"]:
+        db.mark_payment_failed(order_id, "amount_mismatch_or_state")
+        return redirect("/?paid=fail&reason=amount")
+    # 4) 서버 승인 호출
+    try:
+        result = _toss_confirm(payment_key, order_id, amt)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode()[:200]
+        except Exception:
+            pass
+        logging.warning(f"[Billing] confirm HTTPError {e.code}: {detail}")
+        db.mark_payment_failed(order_id, f"confirm_http_{e.code}")
+        return redirect("/?paid=fail&reason=confirm")
+    except Exception as e:
+        logging.warning(f"[Billing] confirm error: {e}")
+        db.mark_payment_failed(order_id, f"confirm_error")
+        return redirect("/?paid=fail&reason=confirm")
+    # 5) 승인 결과 반영
+    if result.get("status") == "DONE":
+        if db.mark_payment_done(order_id, payment_key, result.get("method", "")):
+            db.set_user_plan(u["id"], order["plan_code"])  # 1개월 부여(월주기 = 구매 시점 기준)
+        return redirect(f"/?paid=1&plan={order['plan_code']}")
+    db.mark_payment_failed(order_id, f"status_{result.get('status')}")
+    return redirect("/?paid=fail&reason=status")
+
+
+@app.route("/api/billing/fail")
+def api_billing_fail():
+    """토스 failUrl 콜백(사용자 취소·실패). 주문을 FAILED로 표시."""
+    order_id = request.args.get("orderId", "")
+    if order_id:
+        db.mark_payment_failed(order_id, request.args.get("message") or request.args.get("code") or "user_fail")
+    return redirect("/?paid=fail&reason=cancel")
+
+
+@app.route("/api/billing/history")
+def api_billing_history():
+    """내 결제 내역."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify(db.list_payments(user_id=u["id"], limit=50))
 
 
 # ── API: Categories ────────────────────────────────────
