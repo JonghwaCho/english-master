@@ -50,6 +50,7 @@
 - **설정(운영자)**: `/admin → 결제(Toss) 설정`에서 사용 on/off·client_key·secret_key(마스킹) 편집. env 시드(`TOSS_CLIENT_KEY`/`TOSS_SECRET_KEY`) 지원. 테스트 키(`test_ck_`/`test_sk_`) → 운영 키 무중단 교체
 - **원장**: `payments`(order_id UNIQUE, user_id, plan_code, amount, status READY|DONE|FAILED, payment_key, method, created_at, approved_at)
 - **API**: `GET /api/billing/config`, `POST /api/billing/checkout`, `GET /api/billing/confirm`, `GET /api/billing/fail`, `GET /api/billing/history`, 관리자 `GET/PUT /api/admin/billing-settings`·`GET /api/admin/payments`
+- **환불/취소(관리자)**: `/admin` 결제 목록의 DONE 건 → "취소/환불" → 토스 전체 취소(`POST /v1/payments/{paymentKey}/cancel`) 후 `payments.status=CANCELED` + **요금제 free 회수**. 멱등(이미 CANCELED면 400). 부분환불·사용자 셀프환불은 백로그. API: `POST /api/admin/payments/<order_id>/cancel {reason}`
 
 ### F-0.10 DB 백업 (Backup)
 - **자동 백업**: 백그라운드 스레드가 **매일 1회(UTC)** SQLite **온라인 백업 API**(`conn.backup`)로 **실행 중에도 일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 1시간마다 깨어나 "오늘 백업 없으면 1회" 수행. `ENABLE_BACKUP`(기본 1)로 on/off
@@ -456,6 +457,7 @@ process_review(item_id, item_type, correct):
 | DELETE | /api/admin/backups/:name | 백업 파일 삭제 |
 | GET/PUT | /api/admin/billing-settings | 토스 결제 설정 조회·편집(secret 마스킹) |
 | GET | /api/admin/payments | 최근 결제 내역 |
+| POST | /api/admin/payments/:order_id/cancel | 결제 취소/환불 + 요금제 회수 |
 
 ### 결제 API
 | Method | Endpoint | 설명 |
@@ -487,6 +489,7 @@ process_review(item_id, item_type, correct):
 | v1.9 | 2026-10-15 | AI 사용량 제한 — 서버 공용 키 비용 보호. 요금제별 사용자 일/월 AI 호출 한도(-1 무제한/0 차단), 과금 호출만 원장 기록(캐시·개인키·사전폴백 제외), 초과 시 action 429·word-meaning 사전 폴백, `/api/ai/usage`, 관리자 한도 편집, 설정 패널 잔여 표시 |
 | v1.10 | 2026-10-15 | DB 백업 — 매일 자동 SQLite 온라인 백업(최신 14개 롤링), 관리자 수동 백업·목록·다운로드(오프사이트)·삭제, 파일명 검증으로 경로탈출 차단, Fly 볼륨 스냅샷 보완 안내 |
 | v1.11 | 2026-10-15 | 실결제(토스페이먼츠) — 단건 1개월 이용권. 서버 주문·금액 변조 차단, 서버 승인(Basic), 멱등 부여, 업그레이드 모달·v2 SDK, 운영자 키 편집(테스트/운영), 결제 원장·관리자 내역 |
+| v1.12 | 2026-10-15 | 환불/취소 — 관리자 결제 취소(토스 cancel API, 전액) + 요금제 free 회수, 멱등 |
 
 ---
 

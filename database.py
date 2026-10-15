@@ -253,6 +253,13 @@ DEFAULT_PLANS = [
 ]
 
 
+def _add_col(conn, table, col, decl):
+    """해당 컬럼이 없으면 ALTER TABLE로 추가한다(기존 배포 DB 마이그레이션용, 멱등)."""
+    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    if col not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+
 def _migrate_billing(conn):
     """요금제(plans) + 콘텐츠 등록 원장(content_registrations) 스키마를 준비한다.
     - users: plan_code / plan_started_at 컬럼 추가 (없으면)
@@ -305,15 +312,21 @@ def _migrate_billing(conn):
             user_id     INTEGER NOT NULL,
             plan_code   TEXT NOT NULL,
             amount      INTEGER NOT NULL,
-            status      TEXT NOT NULL DEFAULT 'READY',  -- READY | DONE | FAILED
+            status      TEXT NOT NULL DEFAULT 'READY',  -- READY | DONE | FAILED | CANCELED
             payment_key TEXT,
             method      TEXT,
+            kind        TEXT DEFAULT 'single',          -- single | billing(자동결제)
             fail_reason TEXT,
             created_at  TEXT DEFAULT (datetime('now')),
-            approved_at TEXT
+            approved_at TEXT,
+            canceled_at TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, id);
     """)
+
+    # 기존 payments 테이블(이전 배포)에 신규 컬럼 보강
+    _add_col(conn, "payments", "kind", "TEXT DEFAULT 'single'")
+    _add_col(conn, "payments", "canceled_at", "TEXT")
 
     # 기존 DB(이미 plans 테이블이 있던 경우) AI 한도 컬럼 추가 + 알려진 요금제 권장값 backfill
     pcols = [r["name"] for r in conn.execute("PRAGMA table_info(plans)").fetchall()]
@@ -1937,6 +1950,17 @@ def mark_payment_failed(order_id, reason=""):
         "WHERE order_id=? AND status='READY'", (str(reason)[:300], order_id))
     conn.commit()
     conn.close()
+
+
+def mark_payment_canceled(order_id, reason=""):
+    """DONE → CANCELED(환불/취소). 실제로 전이되면 True."""
+    conn = get_conn()
+    cur = conn.execute(
+        "UPDATE payments SET status='CANCELED', fail_reason=?, canceled_at=datetime('now') "
+        "WHERE order_id=? AND status='DONE'", (str(reason)[:300], order_id))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
 
 
 def list_payments(user_id=None, limit=100):

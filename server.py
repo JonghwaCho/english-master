@@ -931,6 +931,36 @@ def api_admin_payments():
     return jsonify(db.list_payments(limit=200))
 
 
+@app.route("/api/admin/payments/<order_id>/cancel", methods=["POST"])
+def api_admin_cancel_payment(order_id):
+    """결제 취소/환불(관리자). 토스 취소 API 호출 후 요금제를 회수(free 강등)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    order = db.get_payment_order(order_id)
+    if not order:
+        return jsonify({"error": "존재하지 않는 결제입니다"}), 404
+    if order["status"] != "DONE" or not order["payment_key"]:
+        return jsonify({"error": "취소 가능한 상태(DONE)가 아닙니다"}), 400
+    reason = ((request.json or {}).get("reason") or "").strip() or "운영자 취소/환불"
+    try:
+        _toss_cancel(order["payment_key"], reason)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode()[:200]
+        except Exception:
+            pass
+        logging.warning(f"[Billing] cancel HTTPError {e.code}: {detail}")
+        return jsonify({"error": f"토스 취소 실패({e.code})", "detail": detail}), 400
+    except Exception as e:
+        logging.warning(f"[Billing] cancel error: {e}")
+        return jsonify({"error": "토스 취소 호출 실패"}), 500
+    db.mark_payment_canceled(order_id, reason)
+    db.set_user_plan(order["user_id"], "free")   # 요금제 회수
+    return jsonify({"ok": True})
+
+
 # ── API: Admin - 이메일(SMTP) 설정 ─────────────────────
 
 def _email_settings_public(s):
@@ -1030,6 +1060,18 @@ def _toss_confirm(payment_key, order_id, amount):
                            "amount": int(amount)}).encode()
     req = urllib.request.Request(
         TOSS_API_BASE + "/v1/payments/confirm", data=body, method="POST",
+        headers={"Authorization": "Basic " + token, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json_lib.loads(resp.read().decode())
+
+
+def _toss_cancel(payment_key, reason):
+    """결제 전체 취소(환불). 성공 시 Payment 객체(dict). cancelAmount 미지정=전액."""
+    secret = _toss_settings()["secret_key"]
+    token = base64.b64encode((secret + ":").encode()).decode()
+    body = json_lib.dumps({"cancelReason": reason or "운영자 취소"}).encode()
+    req = urllib.request.Request(
+        TOSS_API_BASE + f"/v1/payments/{payment_key}/cancel", data=body, method="POST",
         headers={"Authorization": "Basic " + token, "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json_lib.loads(resp.read().decode())

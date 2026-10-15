@@ -363,7 +363,8 @@ backdrop-filter: blur(12px)
   - **서버 승인**: `secret_key`로 `POST https://api.tosspayments.com/v1/payments/confirm`(Basic `base64(secretKey:)`). `client_key`만 프론트 노출.
   - **멱등**: `mark_payment_done()`이 `READY→DONE` 단일 전이 → 중복 콜백에도 이중 부여/과금 없음.
 - **설정**: 토스 키는 `app_settings`에 저장(`/admin` 편집, secret 마스킹), env(`TOSS_CLIENT_KEY`/`TOSS_SECRET_KEY`) 시드. `_toss_settings()`가 DB→env 폴백.
-- **남은 것**: 운영 키 교체(사업자 심사), 환불/취소(현재 토스 대시보드 수동), 자동 정기결제(빌링).
+- **환불/취소**: 관리자가 `/admin` 결제 목록의 DONE 건을 취소하면 `_toss_cancel`(`POST /v1/payments/{paymentKey}/cancel`, 전액) 호출 → `payments.status=CANCELED` + `set_user_plan(free)`로 요금제 회수. 멱등(DONE일 때만 전이).
+- **남은 것**: 운영 키 교체(사업자 심사), 부분환불·사용자 셀프환불, 자동 정기결제(빌링).
 
 ---
 
