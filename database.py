@@ -31,6 +31,10 @@ DATA_DIR = os.environ.get(
     "DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 )
 DB_PATH = os.path.join(DATA_DIR, "english_master.db")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+# 백업 파일명 패턴: english_master-YYYYMMDD-HHMMSS[-N].db (경로탈출 방지 검증에도 사용)
+import re as _re
+_BACKUP_NAME_RE = _re.compile(r"^english_master-\d{8}-\d{6}(-\d+)?\.db$")
 
 
 def get_conn():
@@ -1668,6 +1672,104 @@ def get_ai_usage(user_id):
         "unlimited": daily_limit < 0 and monthly_limit < 0,
         "reason": ("daily" if daily_over else ("monthly" if monthly_over else None)),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  DB 백업 (Backup) — 데이터 유실 방지
+# ══════════════════════════════════════════════════════════════════════
+# SQLite 온라인 백업 API로 '실행 중에도 일관된' 스냅샷을 DATA_DIR/backups/ 에 만든다.
+# 같은 볼륨에 두므로 '앱 버그/실수 삭제'로부터 보호된다. '볼륨 자체 유실'은
+# Fly 볼륨 스냅샷(인프라) + 관리자 수동 다운로드(오프사이트)로 보완한다. (DECISION_LOG 참조)
+
+def create_backup():
+    """현재 DB의 일관된 스냅샷을 backups/ 에 만들고 메타데이터를 반환한다.
+    실행 중에도 안전하도록 sqlite3 온라인 백업 API(conn.backup)를 쓴다."""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    name = f"english_master-{ts}.db"
+    dest_path = os.path.join(BACKUP_DIR, name)
+    # 같은 초에 두 번 호출되면 덮어쓰지 않도록 유일한 이름 보장
+    seq = 1
+    while os.path.exists(dest_path):
+        name = f"english_master-{ts}-{seq}.db"
+        dest_path = os.path.join(BACKUP_DIR, name)
+        seq += 1
+
+    src = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        dst = sqlite3.connect(dest_path)
+        try:
+            src.backup(dst)          # 일관된 온라인 백업(락 경합 최소)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+    prune_backups()
+    size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+    return {"name": os.path.basename(dest_path), "size": size,
+            "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}
+
+
+def list_backups():
+    """backups/ 의 백업 파일 목록을 최신순으로 반환한다. [{name, size, created_at(UTC)}]"""
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+    items = []
+    for fn in os.listdir(BACKUP_DIR):
+        full = os.path.join(BACKUP_DIR, fn)
+        if not os.path.isfile(full) or not fn.endswith(".db"):
+            continue
+        st = os.stat(full)
+        items.append({
+            "name": fn,
+            "size": st.st_size,
+            "created_at": datetime.utcfromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    # 파일명이 타임스탬프라 이름 역순 = 최신순
+    items.sort(key=lambda x: x["name"], reverse=True)
+    return items
+
+
+def prune_backups(keep=14):
+    """최신 keep개만 남기고 오래된 백업 파일을 삭제한다(기본 14개 ≈ 2주 일일백업)."""
+    backups = list_backups()
+    for b in backups[keep:]:
+        try:
+            os.remove(os.path.join(BACKUP_DIR, b["name"]))
+        except OSError:
+            pass
+    return len(backups[keep:])
+
+
+def backup_path_if_valid(name):
+    """다운로드/삭제용: 파일명이 백업 패턴과 정확히 일치하고 실제 존재할 때만
+    절대경로를 반환한다(경로탈출·임의파일 접근 방지). 아니면 None."""
+    if not name or not _BACKUP_NAME_RE.match(name):
+        return None
+    full = os.path.join(BACKUP_DIR, name)
+    return full if os.path.isfile(full) else None
+
+
+def delete_backup(name):
+    """백업 파일 1개를 삭제한다. 성공 시 True."""
+    full = backup_path_if_valid(name)
+    if not full:
+        return False
+    try:
+        os.remove(full)
+        return True
+    except OSError:
+        return False
+
+
+def latest_backup_date_utc():
+    """가장 최근 백업의 날짜(UTC, 'YYYY-MM-DD')를 반환. 없으면 None.
+    (스케줄러가 '오늘 이미 백업했는지' 판단하는 데 사용)"""
+    backups = list_backups()
+    if not backups:
+        return None
+    return backups[0]["created_at"][:10]
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -104,6 +104,25 @@
       설정 전에는 인증 메일이 발송되지 않고 인증 링크가 서버 로그에만 남습니다.
     </p>
 
+    <div class="section-title">DB 백업</div>
+    <div class="plan-card" style="max-width:720px;margin-bottom:8px;" id="backup-card">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <button class="btn" id="backup-now-btn" onclick="createBackup(this)">지금 백업</button>
+        <span class="muted" id="backup-info" style="font-size:12px;"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>파일</th><th class="num">크기</th><th>생성(UTC)</th><th>관리</th></tr></thead>
+          <tbody id="backup-rows"><tr><td colspan="4" class="loading">불러오는 중...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:28px;">
+      매일 1회 자동 백업되어 최신 <b>14개</b>만 보관됩니다(실행 중에도 일관된 스냅샷). 백업은 데이터 볼륨(<code>/data/backups</code>)에 저장돼
+      앱 버그·실수 삭제로부터 보호합니다. <b>볼륨 자체 유실</b>에 대비하려면 중요한 백업을 <b>다운로드해 오프사이트(내 PC 등)에 보관</b>하고,
+      Fly 볼륨 스냅샷도 함께 활성화하세요.
+    </p>
+
     <div class="section-title">사용자 (<span id="user-count">0</span>명)</div>
     <div class="table-wrap">
       <table>
@@ -132,16 +151,18 @@
 
     async function load() {
       try {
-        const [stats, users, plans, email] = await Promise.all([
+        const [stats, users, plans, email, backups] = await Promise.all([
           fetch('/api/admin/stats').then(r => r.json()),
           fetch('/api/admin/users').then(r => r.json()),
           fetch('/api/admin/plans').then(r => r.json()),
           fetch('/api/admin/email-settings').then(r => r.json()),
+          fetch('/api/admin/backups').then(r => r.json()),
         ]);
         PLANS = plans;
         renderStats(stats);
         renderPlans(plans);
         renderEmail(email);
+        renderBackups(backups);
         renderUsers(users);
       } catch (e) {
         document.getElementById('user-rows').innerHTML =
@@ -229,6 +250,78 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
         return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
       });
+    }
+
+    function fmtBytes(n) {
+      if (n == null) return '—';
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function renderBackups(data) {
+      var backups = (data && data.backups) || [];
+      var info = document.getElementById('backup-info');
+      if (info) {
+        info.textContent = (data && data.auto ? '자동 백업 ON · ' : '자동 백업 OFF · ') +
+          '최신 ' + ((data && data.keep) || 14) + '개 보관 · 현재 ' + backups.length + '개';
+      }
+      var rows = document.getElementById('backup-rows');
+      if (!rows) return;
+      if (!backups.length) {
+        rows.innerHTML = '<tr><td colspan="4" class="loading">아직 백업이 없습니다. "지금 백업"을 눌러보세요.</td></tr>';
+        return;
+      }
+      rows.innerHTML = backups.map(function(b) {
+        var dl = '/api/admin/backups/' + encodeURIComponent(b.name) + '/download';
+        return '<tr>' +
+          '<td>' + esc(b.name) + '</td>' +
+          '<td class="num">' + fmtBytes(b.size) + '</td>' +
+          '<td>' + esc(b.created_at) + '</td>' +
+          '<td>' +
+            '<a class="btn" href="' + dl + '" style="padding:4px 10px;">다운로드</a> ' +
+            '<button class="btn" style="padding:4px 10px;background:var(--red,#c0392b);" ' +
+              'onclick="deleteBackup(this,\'' + esc(b.name) + '\')">삭제</button>' +
+          '</td></tr>';
+      }).join('');
+    }
+
+    async function createBackup(btn) {
+      btn.disabled = true;
+      var old = btn.textContent;
+      btn.textContent = '백업 중...';
+      try {
+        var res = await fetch('/api/admin/backups', { method: 'POST' });
+        var j = await res.json();
+        if (!res.ok || j.error) throw new Error(j.error || '백업 실패');
+        btn.textContent = '✓ 완료';
+        await reloadBackups();
+      } catch (e) {
+        alert(e.message || '백업 실패');
+      } finally {
+        setTimeout(function () { btn.textContent = old; btn.disabled = false; }, 1200);
+      }
+    }
+
+    async function deleteBackup(btn, name) {
+      if (!confirm('이 백업을 삭제할까요?\n' + name)) return;
+      btn.disabled = true;
+      try {
+        var res = await fetch('/api/admin/backups/' + encodeURIComponent(name), { method: 'DELETE' });
+        var j = await res.json();
+        if (!res.ok || j.error) throw new Error(j.error || '삭제 실패');
+        await reloadBackups();
+      } catch (e) {
+        alert(e.message || '삭제 실패');
+        btn.disabled = false;
+      }
+    }
+
+    async function reloadBackups() {
+      try {
+        var data = await fetch('/api/admin/backups').then(function (r) { return r.json(); });
+        renderBackups(data);
+      } catch (e) {}
     }
 
     function renderPlans(plans) {

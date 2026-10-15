@@ -182,6 +182,7 @@ Level 7 <──[30d]── Level 6 <──[15d]── Level 5 <──[7d]── 
 | sentence_translation_worker | sentence_trans_queue | 모르는 문장 한국어 번역 자동 생성 |
 | ai_precache_worker | ai_precache_queue | AI 분석 사전 캐싱 (직독직해, 문법, 단어) |
 | sync_thread | (timer) | 플레이리스트 30분 주기 자동 동기화 |
+| backup_loop | (timer) | 매일 1회 DB 자동 백업(1시간마다 '오늘 미백업 시' 생성, `ENABLE_BACKUP`) |
 
 ## 7. 프론트엔드 설계
 
@@ -313,7 +314,8 @@ backdrop-filter: blur(12px)
 - ✅ 이메일 인증 — 아래 11.6 참조
 - ✅ 플레이리스트 동기화 영상 할당량 정책 — 미적용(무제한)으로 **결정**(11.5 참조)
 - ✅ AI 사용량 제한(서버 공용 키 비용 보호) — 아래 11.7 참조
-- 남은 과제: **실결제(PG) 연동**(현재는 관리자 수동 부여), DB 백업
+- ✅ DB 백업(자동 일일 + 관리자 수동/다운로드) — 아래 11.8 참조
+- 남은 과제: **실결제(PG) 연동**(현재는 관리자 수동 부여)
 
 ### 11.5 요금제 · 콘텐츠 등록 할당량 (Billing / Quota)
 
@@ -342,7 +344,15 @@ backdrop-filter: blur(12px)
 - **마이그레이션**: 기존 `plans`에 AI 컬럼 ALTER 추가 후, ALTER 기본값(20/200)을 상위 요금제 권장값으로 backfill(관리자 커스텀 `content_limit` 등은 보존). `ai_usage_log`는 `(user_id, used_at)`·`(used_at)` 인덱스. `record_ai_usage()`가 ≈5% 확률로 40일 초과 기록 정리.
 - **enforcement**: `server._ai_guard()`가 호출 직전 게이트 — 개인키→무제한·미기록, 서버키 초과→**429 `ai_quota_exceeded`**, 통과→성공 시 기록. `/api/ai/action`(초과 429), `/api/ai/word-meaning`(초과 시 사전 폴백·은혜로운 저하), `/api/ai/test`(429)에 적용. `GET /api/ai/usage`로 잔여 조회, 설정 패널에 표시.
 
+### 11.8 DB 백업 (Backup)
+
+- **방식**: SQLite **온라인 백업 API**(`sqlite3.Connection.backup`)로 실행 중에도 **일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 파일 복사(`cp`)는 쓰기 중 비일관 위험 때문에 기각.
+- **스케줄**: `_backup_loop` 스레드가 1시간마다 깨어나 "오늘(UTC) 백업 없으면 1회" 생성 → **매일 1회**. `init_app`에서 `ENABLE_BACKUP`(기본 1) 가드. 단일 워커(Dockerfile `--workers 1`)라 중복 없음.
+- **보관**: `prune_backups(keep=14)`로 최신 14개만 유지(롤링). `/data` 볼륨 용량 보호.
+- **관리자 API**: `GET/POST /api/admin/backups`, `GET /api/admin/backups/<name>/download`(`send_file`), `DELETE /api/admin/backups/<name>`. 파일명은 `database.backup_path_if_valid()`가 정규식으로 검증 → **경로탈출/임의 파일 접근 차단**.
+- **다층 방어**: 같은 볼륨 백업 = 앱 버그·실수 삭제 보호. **볼륨 유실** 대비는 (a) 관리자 다운로드(오프사이트) + (b) **Fly 볼륨 스냅샷**(`fly volumes snapshots`, 보존기간 `--snapshot-retention`). "백업=안전" 과신 금지.
+
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-10-15 (AI 사용량 제한: 서버 공용 키 비용 보호 — 요금제별 일/월 호출 한도, 과금 호출만 원장 집계)*
+*최종 업데이트: 2026-10-15 (DB 백업: 일일 자동 SQLite 온라인 백업 + 관리자 수동/다운로드/삭제, 경로탈출 차단, Fly 스냅샷 보완)*

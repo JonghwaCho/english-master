@@ -12,7 +12,7 @@ import urllib.request
 import urllib.parse
 import json as json_lib
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request, session, redirect
+from flask import Flask, render_template, jsonify, request, session, redirect, send_file, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
@@ -829,6 +829,58 @@ def api_admin_set_user_plan(user_id):
         return jsonify({"error": "존재하지 않는 사용자입니다"}), 404
     db.set_user_plan(user_id, plan_code)
     return jsonify(db.get_usage(user_id))
+
+
+# ── API: Admin - DB 백업 ───────────────────────────────
+
+@app.route("/api/admin/backups", methods=["GET"])
+def api_admin_list_backups():
+    """백업 파일 목록(최신순) + 설정 정보."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify({
+        "backups": db.list_backups(),
+        "auto": os.environ.get("ENABLE_BACKUP", "1") == "1",  # 자동 백업 켜짐 여부
+        "keep": 14,                                           # 보관 개수(prune_backups 기본)
+    })
+
+
+@app.route("/api/admin/backups", methods=["POST"])
+def api_admin_create_backup():
+    """지금 즉시 백업 생성(관리자 수동)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    try:
+        info = db.create_backup()
+        return jsonify({"ok": True, "backup": info})
+    except Exception as e:
+        return jsonify({"error": f"백업 실패: {e}"}), 500
+
+
+@app.route("/api/admin/backups/<name>/download", methods=["GET"])
+def api_admin_download_backup(name):
+    """백업 파일 다운로드(오프사이트 보관용). 파일명 검증으로 경로탈출 차단."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    path = db.backup_path_if_valid(name)
+    if not path:
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=name,
+                     mimetype="application/x-sqlite3")
+
+
+@app.route("/api/admin/backups/<name>", methods=["DELETE"])
+def api_admin_delete_backup(name):
+    """백업 파일 1개 삭제(관리자)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    if db.delete_backup(name):
+        return jsonify({"ok": True})
+    return jsonify({"error": "존재하지 않거나 잘못된 백업 파일입니다"}), 404
 
 
 # ── API: Admin - 이메일(SMTP) 설정 ─────────────────────
@@ -1769,6 +1821,22 @@ def _background_sync_loop():
             logging.warning(f"Background sync error: {e}")
 
 
+def _backup_loop():
+    """백그라운드 스레드: 하루 1회(UTC) 자동 DB 백업.
+    별도 cron 없이 1시간마다 깨어나 '오늘 아직 백업 안 했으면' 백업한다.
+    gunicorn 단일 워커(Dockerfile --workers 1) 기준으로 중복 없이 1회만 돈다."""
+    # 기동 직후, 아직 오늘 백업이 없으면 즉시 1회 생성(첫 배포/빈 상태 보호)
+    while True:
+        try:
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            if db.latest_backup_date_utc() != today:
+                info = db.create_backup()
+                logging.info(f"[Backup] auto backup created: {info['name']} ({info['size']} bytes)")
+        except Exception as e:
+            logging.warning(f"[Backup] auto backup error: {e}")
+        time.sleep(3600)  # 1시간마다 확인
+
+
 # ── API: AI Integration ─────────────────────────────────
 # Gemini / Claude / ChatGPT 연동 프록시
 
@@ -2226,6 +2294,9 @@ def init_app():
     # 플레이리스트 자동 동기화 스레드 (다중 워커 환경에서는 ENABLE_SYNC=0으로 끌 수 있음)
     if os.environ.get("ENABLE_SYNC", "1") == "1":
         threading.Thread(target=_background_sync_loop, daemon=True).start()
+    # 자동 DB 백업 스레드 (다중 워커 환경에서는 한 워커만 ENABLE_BACKUP=1로 두기)
+    if os.environ.get("ENABLE_BACKUP", "1") == "1":
+        threading.Thread(target=_backup_loop, daemon=True).start()
 
 
 init_app()

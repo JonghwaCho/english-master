@@ -39,6 +39,14 @@
 - **API**: `GET /api/me/plan`(내 사용량+요금제), 관리자 `GET /api/admin/plans`·`PUT /api/admin/plans/<code>`(가격·한도)·`PUT /api/admin/users/<id>/plan`(요금제 부여). PG(실결제) 연동은 다음 단계 — 현재는 관리자 수동 부여
 - **users 추가 컬럼**: `plan_code`(기본 'free'), `plan_started_at`(구독 시작일)
 
+### F-0.10 DB 백업 (Backup)
+- **자동 백업**: 백그라운드 스레드가 **매일 1회(UTC)** SQLite **온라인 백업 API**(`conn.backup`)로 **실행 중에도 일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 1시간마다 깨어나 "오늘 백업 없으면 1회" 수행. `ENABLE_BACKUP`(기본 1)로 on/off
+- **보관 정책**: 최신 **14개**만 유지(롤링 prune). 파일명이 타임스탬프라 이름 역순=최신순
+- **관리자 도구**: `/admin` "DB 백업" 섹션 — 지금 백업 버튼, 목록(파일명·크기·생성시각), **다운로드**(오프사이트 보관), 삭제
+- **보안**: 다운로드/삭제 파일명은 정규식(`english_master-\d{8}-\d{6}(-\d+)?\.db`)으로 검증해 **경로탈출·임의 파일 접근 차단**. 관리자만 접근(그 외 403)
+- **다층 방어**: 같은 볼륨 백업은 앱 버그·실수 삭제를 막고, **볼륨 유실**은 관리자 다운로드(오프사이트) + **Fly 볼륨 스냅샷**(인프라)으로 보완 (DECISION_LOG 2026-10-15 참조)
+- **API**: `GET /api/admin/backups`(목록+설정), `POST /api/admin/backups`(즉시 생성), `GET /api/admin/backups/<name>/download`, `DELETE /api/admin/backups/<name>`
+
 ### F-0.6 사용자별 AI 키 (Step 3)
 - **정책(둘 다 지원)**: 개인 키 설정 시 개인 키 사용, 미설정 시 **서버 공용 키로 폴백**
 - **저장**: `users.ai_provider`/`ai_key` (사용자별). `/api/ai/settings` GET/POST가 현재 사용자 기준으로 동작
@@ -426,6 +434,15 @@ process_review(item_id, item_type, correct):
 | GET | /api/ai/usage | 내 AI 사용량(일/월 사용·잔여·초과) |
 | GET | /api/ai/settings | AI 설정(+서버키 사용 시 usage 포함) |
 
+### 관리자 API (일부)
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET/PUT | /api/admin/plans[/:code] | 요금제 조회·편집(가격·콘텐츠/AI 한도) |
+| PUT | /api/admin/users/:id/plan | 사용자 요금제 부여 |
+| GET/POST | /api/admin/backups | 백업 목록 / 즉시 백업 생성 |
+| GET | /api/admin/backups/:name/download | 백업 파일 다운로드 |
+| DELETE | /api/admin/backups/:name | 백업 파일 삭제 |
+
 ---
 
 ## 9. 버전 이력
@@ -445,6 +462,7 @@ process_review(item_id, item_type, correct):
 | v1.6 | 2026-07-07 | 요금제·콘텐츠 등록 할당량 — free/basic/premium/max 4단계, 관리자 가격·한도 편집, 등록 원장 기반 카운트(삭제해도 유지), 구독 시작일 기준 월 리셋, 한도 초과 시 402 차단 |
 | v1.7 | 2026-07-07 | 이메일 인증 — 가입 시 인증 메일, 미인증 로그인 차단, 재발송, 관리자 SMTP 설정 편집(운영자별), smtplib 발송, 구글/최초운영자/기존사용자 자동 인증 |
 | v1.9 | 2026-10-15 | AI 사용량 제한 — 서버 공용 키 비용 보호. 요금제별 사용자 일/월 AI 호출 한도(-1 무제한/0 차단), 과금 호출만 원장 기록(캐시·개인키·사전폴백 제외), 초과 시 action 429·word-meaning 사전 폴백, `/api/ai/usage`, 관리자 한도 편집, 설정 패널 잔여 표시 |
+| v1.10 | 2026-10-15 | DB 백업 — 매일 자동 SQLite 온라인 백업(최신 14개 롤링), 관리자 수동 백업·목록·다운로드(오프사이트)·삭제, 파일명 검증으로 경로탈출 차단, Fly 볼륨 스냅샷 보완 안내 |
 
 ---
 
