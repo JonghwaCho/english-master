@@ -429,7 +429,12 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
     <div id="plan-badge" style="display:none; margin-bottom:8px; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:12px;"></div>
     <a id="admin-link" href="/admin" style="display:none; margin-bottom:8px; padding:8px; background:var(--bg); border:1px solid var(--primary); border-radius:8px; color:var(--primary); font-size:12px; text-align:center; text-decoration:none;">🛠 관리자</a>
     <button onclick="logout()" style="width:100%; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text3); font-size:12px; cursor:pointer;">로그아웃</button>
-    <div style="margin-top:10px;">Ebbinghaus Spaced Repetition</div>
+    <div style="margin-top:10px; line-height:1.8;">
+      <a href="/terms" target="_blank" style="color:var(--text3);text-decoration:none;">이용약관</a> ·
+      <a href="/privacy" target="_blank" style="color:var(--text3);text-decoration:none;">개인정보처리방침</a> ·
+      <a href="/refund" target="_blank" style="color:var(--text3);text-decoration:none;">환불정책</a>
+    </div>
+    <div style="margin-top:8px;">Ebbinghaus Spaced Repetition</div>
   </div>
 </nav>
 
@@ -6399,11 +6404,12 @@ function loadTossSdk() {
 }
 
 async function openUpgradeModal() {
-  var cfg, plan, sub;
+  var cfg, plan, sub, legal;
   try {
     cfg = await fetch('/api/billing/config').then(function (r) { return r.json(); });
     plan = await fetch('/api/me/plan').then(function (r) { return r.json(); });
     sub = await fetch('/api/billing/subscription').then(function (r) { return r.json(); });
+    legal = await fetch('/api/legal/info').then(function (r) { return r.json(); }).catch(function () { return {}; });
   } catch (e) { toast('요금제 정보를 불러오지 못했습니다', 'error'); return; }
 
   var curCode = plan && plan.usage ? plan.usage.plan_code : 'free';
@@ -6443,6 +6449,20 @@ async function openUpgradeModal() {
   var note = cfg.enabled
     ? '<div style="color:var(--text3);font-size:11px;margin-top:6px;">• <b>1회 결제</b>: 해당 요금제 1개월 적용(자동 갱신 없음) · <b>자동결제</b>: 카드 등록 후 매월 자동 청구·갱신(언제든 해지 가능)</div>'
     : '<div style="color:var(--amber,#f59e0b);font-size:11px;margin-top:6px;">⚠ 결제가 아직 준비되지 않았습니다(운영자 설정 대기).</div>';
+
+  // 전자상거래법 결제 전 고지(사업자 정보 요약 + 정책 링크 + 결제 동의 안내)
+  var L = legal || {};
+  var bizBits = [];
+  if (L.company_name) bizBits.push(escapeHtmlSafe(L.company_name));
+  if (L.ceo_name) bizBits.push('대표 ' + escapeHtmlSafe(L.ceo_name));
+  if (L.biz_reg_no) bizBits.push('사업자 ' + escapeHtmlSafe(L.biz_reg_no));
+  if (L.mail_order_no) bizBits.push('통신판매 ' + escapeHtmlSafe(L.mail_order_no));
+  if (cfg.enabled) {
+    note += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--text3);font-size:11px;line-height:1.7;">' +
+      (bizBits.length ? bizBits.join(' · ') + '<br>' : '') +
+      '결제를 진행하면 <a href="/terms" target="_blank" style="color:var(--primary);">이용약관</a> · <a href="/refund" target="_blank" style="color:var(--primary);">환불·취소 정책</a>에 동의하는 것으로 간주됩니다.' +
+      '</div>';
+  }
   rows = subBanner + rows;
 
   var wrap = document.getElementById('upgrade-modal');

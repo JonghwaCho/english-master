@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if page == 'terms' %}이용약관{% elif page == 'privacy' %}개인정보처리방침{% else %}환불·취소 정책{% endif %} · {{ info.service_name }}</title>
+<style>
+  :root { --bg:#f7f8fa; --card:#fff; --text1:#1f2430; --text2:#444b57; --text3:#8a919e; --border:#e6e8ec; --primary:#3b82f6; --amber:#b45309; --amber-bg:#fef3c7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text1); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif; line-height:1.7; }
+  .wrap { max-width:820px; margin:0 auto; padding:32px 20px 80px; }
+  .topnav { display:flex; gap:14px; align-items:center; margin-bottom:18px; font-size:13px; }
+  .topnav a { color:var(--text3); text-decoration:none; }
+  .topnav a.active { color:var(--primary); font-weight:700; }
+  .topnav .home { margin-left:auto; }
+  h1 { font-size:26px; margin:6px 0 4px; }
+  h2 { font-size:17px; margin:26px 0 8px; padding-top:6px; }
+  h3 { font-size:15px; margin:16px 0 6px; }
+  p, li { color:var(--text2); font-size:14px; }
+  ul, ol { padding-left:20px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px 24px; }
+  .banner { background:var(--amber-bg); color:var(--amber); border:1px solid #fde68a; border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:18px; }
+  .info-table { width:100%; border-collapse:collapse; margin:10px 0 4px; font-size:13px; }
+  .info-table th, .info-table td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .info-table th { width:40%; color:var(--text3); font-weight:600; }
+  .muted { color:var(--text3); }
+  .effective { color:var(--text3); font-size:12px; margin-top:4px; }
+  footer { margin-top:30px; color:var(--text3); font-size:12px; text-align:center; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161a; --card:#1c1f26; --text1:#e8eaed; --text2:#b9bec8; --text3:#8a919e; --border:#2a2e37; --amber:#fbbf24; --amber-bg:#3a2e12; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="topnav">
+    <a href="/terms" class="{{ 'active' if page=='terms' }}">이용약관</a>
+    <a href="/privacy" class="{{ 'active' if page=='privacy' }}">개인정보처리방침</a>
+    <a href="/refund" class="{{ 'active' if page=='refund' }}">환불·취소 정책</a>
+    <a href="/" class="home">← 서비스로</a>
+  </nav>
+
+  <div class="card">
+    <div class="banner">⚠ 본 문서는 표준 템플릿입니다. 서비스 시행 전 사업 형태에 맞게 내용을 보완하고 <b>법률 전문가의 검토</b>를 받으시기 바랍니다. 사업자 정보는 <code>/admin</code>에서 입력합니다.</div>
+
+    {% set company = info.company_name or '(상호 미설정)' %}
+    {% set svc = info.service_name or 'English Master' %}
+
+    {% if page == 'terms' %}
+    <h1>이용약관</h1>
+    <div class="effective">시행일: {{ info.terms_date or '(미설정)' }}</div>
+
+    <h2>제1조 (목적)</h2>
+    <p>본 약관은 {{ company }}(이하 "회사")가 제공하는 {{ svc }} 및 관련 제반 서비스(이하 "서비스")의 이용과 관련하여 회사와 회원 간의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+
+    <h2>제2조 (정의)</h2>
+    <ul>
+      <li>"회원"이란 본 약관에 동의하고 회사와 서비스 이용계약을 체결한 자를 말합니다.</li>
+      <li>"유료서비스"란 회사가 유료로 제공하는 요금제 및 기능을 말합니다.</li>
+      <li>"콘텐츠"란 회원이 서비스에 등록·이용하는 영상·자막·텍스트 등 학습 자료를 말합니다.</li>
+    </ul>
+
+    <h2>제3조 (약관의 효력 및 변경)</h2>
+    <p>본 약관은 서비스 화면에 게시함으로써 효력이 발생합니다. 회사는 관련 법령을 위반하지 않는 범위에서 약관을 변경할 수 있으며, 변경 시 적용일자 및 사유를 명시하여 사전에 공지합니다.</p>
+
+    <h2>제4조 (이용계약의 성립)</h2>
+    <p>이용계약은 회원이 되고자 하는 자가 약관에 동의하고 가입을 신청한 후 회사가 이를 승낙함으로써 성립합니다. 회사는 서비스 운영상·기술상 필요한 경우 승낙을 유보하거나 거절할 수 있습니다.</p>
+
+    <h2>제5조 (서비스의 제공 및 변경)</h2>
+    <p>회사는 연중무휴, 1일 24시간 서비스 제공을 원칙으로 하되, 시스템 점검·장애·불가항력 등의 사유로 서비스의 전부 또는 일부를 중단할 수 있습니다. 서비스의 내용은 운영상·기술상 필요에 따라 변경될 수 있습니다.</p>
+
+    <h2>제6조 (유료서비스 및 결제)</h2>
+    <ul>
+      <li>회원은 회사가 정한 요금제에 따라 유료서비스를 이용할 수 있으며, 결제는 토스페이먼츠 등 전자결제 수단을 통해 이루어집니다.</li>
+      <li>유료서비스는 <b>단건 결제(1개월 이용권)</b> 또는 <b>자동 정기결제</b> 방식으로 제공됩니다. 자동 정기결제는 등록된 결제수단으로 매월 자동 청구되며, 회원은 언제든지 해지할 수 있습니다.</li>
+      <li>요금, 결제 주기, 제공 내용은 결제 화면 및 서비스 내 안내에 따릅니다.</li>
+    </ul>
+
+    <h2>제7조 (청약철회 및 환불)</h2>
+    <p>유료서비스의 청약철회·환불은 「전자상거래 등에서의 소비자보호에 관한 법률」 등 관련 법령 및 회사의 <a href="/refund">환불·취소 정책</a>에 따릅니다.</p>
+
+    <h2>제8조 (회원 탈퇴 및 이용제한)</h2>
+    <p>회원은 언제든지 탈퇴를 요청할 수 있습니다. 회사는 회원이 약관 또는 법령을 위반하는 경우 사전 통지 후(긴급한 경우 사후 통지) 이용을 제한하거나 계약을 해지할 수 있습니다.</p>
+
+    <h2>제9조 (회원의 의무)</h2>
+    <p>회원은 타인의 권리를 침해하거나 법령·약관을 위반하는 행위, 서비스의 정상적 운영을 방해하는 행위를 하여서는 안 됩니다. 계정 정보의 관리 책임은 회원에게 있습니다.</p>
+
+    <h2>제10조 (책임의 제한)</h2>
+    <p>회사는 천재지변, 회원의 귀책사유, 제3자 서비스의 장애 등 회사의 통제를 벗어난 사유로 인한 손해에 대하여 책임을 지지 않습니다. 서비스는 학습 보조 도구로서, 학습 성과를 보장하지 않습니다.</p>
+
+    <h2>제11조 (준거법 및 분쟁해결)</h2>
+    <p>본 약관은 대한민국 법령에 따라 해석되며, 서비스 이용과 관련한 분쟁에 대해서는 관련 법령상의 관할 법원을 전속 관할로 합니다.</p>
+
+    {% elif page == 'privacy' %}
+    <h1>개인정보처리방침</h1>
+    <div class="effective">시행일: {{ info.terms_date or '(미설정)' }}</div>
+    <p>{{ company }}(이하 "회사")는 「개인정보 보호법」 등 관련 법령을 준수하며, 이용자의 개인정보를 다음과 같이 처리합니다.</p>
+
+    <h2>1. 수집하는 개인정보 항목</h2>
+    <ul>
+      <li>필수: 이메일 주소, 비밀번호(암호화 저장), (선택) 이름</li>
+      <li>구글 로그인 이용 시: 구글 계정 식별자, 이메일, 이름</li>
+      <li>유료 결제 이용 시: 결제 승인 정보(주문번호, 결제수단, 결제 상태 등). <b>카드번호 등 결제정보 원문은 회사가 저장하지 않으며 결제대행사가 처리합니다.</b></li>
+      <li>서비스 이용 과정에서 생성되는 정보: 학습 기록, 접속 로그, 쿠키</li>
+    </ul>
+
+    <h2>2. 개인정보의 수집·이용 목적</h2>
+    <p>회원 식별 및 인증, 서비스 제공 및 운영, 유료서비스 결제·정산, 고객 문의 대응, 서비스 개선 및 부정 이용 방지를 위하여 이용합니다.</p>
+
+    <h2>3. 개인정보의 보유 및 이용 기간</h2>
+    <p>원칙적으로 회원 탈퇴 시 지체 없이 파기합니다. 다만 관련 법령(전자상거래법상 계약·결제·소비자불만 기록 등)에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</p>
+
+    <h2>4. 개인정보의 제3자 제공</h2>
+    <p>회사는 이용자의 개인정보를 본 방침에 명시한 범위를 넘어 제3자에게 제공하지 않습니다. 다만 법령에 근거가 있거나 이용자가 동의한 경우는 예외로 합니다.</p>
+
+    <h2>5. 개인정보 처리의 위탁</h2>
+    <table class="info-table">
+      <tr><th>수탁업체</th><th>위탁 업무</th></tr>
+      <tr><td>토스페이먼츠(주)</td><td>유료서비스 결제 처리</td></tr>
+      <tr><td>{{ info.hosting_provider or '클라우드 호스팅 제공자' }}</td><td>서비스 인프라(서버) 운영·호스팅</td></tr>
+    </table>
+
+    <h2>6. 이용자의 권리와 행사 방법</h2>
+    <p>이용자는 언제든지 자신의 개인정보 열람·정정·삭제·처리정지를 요청할 수 있으며, 서비스 내 설정 또는 아래 연락처를 통해 행사할 수 있습니다.</p>
+
+    <h2>7. 개인정보의 안전성 확보 조치</h2>
+    <p>비밀번호 암호화 저장, 접근 권한 통제, 전송 구간 암호화(HTTPS) 등 관리적·기술적 보호조치를 시행합니다.</p>
+
+    <h2>8. 개인정보 보호책임자</h2>
+    <table class="info-table">
+      <tr><th>성명/직책</th><td>{{ info.privacy_officer or info.ceo_name or '(미설정)' }}</td></tr>
+      <tr><th>연락처</th><td>{{ info.contact_email or '(미설정)' }}{% if info.contact_phone %} / {{ info.contact_phone }}{% endif %}</td></tr>
+    </table>
+
+    {% else %}
+    <h1>환불·취소 정책</h1>
+    <div class="effective">시행일: {{ info.terms_date or '(미설정)' }}</div>
+    <p>{{ company }}(이하 "회사")의 유료서비스 환불·취소는 「전자상거래 등에서의 소비자보호에 관한 법률」 등 관련 법령과 본 정책에 따릅니다.</p>
+
+    <h2>1. 청약철회(환불) 기준</h2>
+    <ul>
+      <li><b>이용 전</b>: 결제 후 서비스(유료 기능)를 이용하지 않은 경우, 결제일로부터 7일 이내 전액 환불을 요청할 수 있습니다.</li>
+      <li><b>이용 후</b>: 유료 기능을 이미 사용한 경우, 콘텐츠의 특성상 이용한 부분에 대하여는 환불이 제한될 수 있습니다. 회사는 이용 정도를 고려하여 환불 여부·금액을 안내합니다.</li>
+      <li>회사의 귀책(서비스 중대한 하자·장애)으로 이용이 불가능했던 경우에는 전액 환불합니다.</li>
+    </ul>
+
+    <h2>2. 자동 정기결제 해지</h2>
+    <p>자동 정기결제는 서비스 내 <b>요금제 → 자동결제 해지</b>에서 언제든지 해지할 수 있습니다. 해지 시 다음 결제일부터 청구되지 않으며, <b>이미 결제·이용 중인 기간은 해당 주기 종료일까지 유지</b>됩니다(일할 환불은 제1항 기준에 따릅니다).</p>
+
+    <h2>3. 환불 방법 및 처리 기간</h2>
+    <p>환불은 원결제수단으로 이루어지는 것을 원칙으로 하며, 카드 결제의 경우 결제 취소 처리됩니다. 환불 요청 승인 후 결제대행사·카드사 정책에 따라 영업일 기준 수일이 소요될 수 있습니다.</p>
+
+    <h2>4. 환불 신청 방법</h2>
+    <p>아래 고객센터로 가입 이메일과 함께 환불을 요청해 주세요. 회사는 요청을 확인한 뒤 환불을 처리합니다.</p>
+
+    {% endif %}
+
+    <h2>사업자 정보</h2>
+    <table class="info-table">
+      <tr><th>상호</th><td>{{ info.company_name or '(미설정)' }}</td></tr>
+      <tr><th>대표자</th><td>{{ info.ceo_name or '(미설정)' }}</td></tr>
+      <tr><th>사업자등록번호</th><td>{{ info.biz_reg_no or '(미설정)' }}</td></tr>
+      <tr><th>통신판매업 신고번호</th><td>{{ info.mail_order_no or '(미설정)' }}</td></tr>
+      <tr><th>사업장 주소</th><td>{{ info.address or '(미설정)' }}</td></tr>
+      <tr><th>고객문의</th><td>{{ info.contact_email or '(미설정)' }}{% if info.contact_phone %} / {{ info.contact_phone }}{% endif %}</td></tr>
+    </table>
+
+    <footer>© {{ info.company_name or info.service_name }} · <a href="/terms">이용약관</a> · <a href="/privacy">개인정보처리방침</a> · <a href="/refund">환불·취소 정책</a></footer>
+  </div>
+</div>
+</body>
+</html>

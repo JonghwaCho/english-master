@@ -93,6 +93,13 @@
       <input type="password" id="password" autocomplete="current-password" placeholder="••••••••" required>
       <div class="hint" id="pwHint" style="display:none">8자 이상 입력하세요</div>
 
+      <div id="agreeField" style="display:none;margin:10px 0 2px;font-size:13px;color:var(--muted);">
+        <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;">
+          <input type="checkbox" id="agree" style="margin-top:3px;">
+          <span><a href="/terms" target="_blank" style="color:var(--primary);">이용약관</a> 및 <a href="/privacy" target="_blank" style="color:var(--primary);">개인정보처리방침</a>에 동의합니다. (필수)</span>
+        </label>
+      </div>
+
       <button type="submit" class="btn" id="submitBtn">로그인</button>
     </form>
 
@@ -114,6 +121,11 @@
     {% endif %}
 
     <div class="msg" id="msg"></div>
+
+    <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--muted);line-height:1.7;">
+      가입·로그인 시 <a href="/terms" target="_blank" style="color:var(--muted);">이용약관</a> ·
+      <a href="/privacy" target="_blank" style="color:var(--muted);">개인정보처리방침</a>에 동의하게 됩니다.
+    </div>
   </div>
 
   <script>
@@ -149,6 +161,7 @@
       document.getElementById('tab-signup').classList.toggle('active', m === 'signup');
       document.getElementById('nameField').style.display = m === 'signup' ? 'block' : 'none';
       document.getElementById('pwHint').style.display = m === 'signup' ? 'block' : 'none';
+      document.getElementById('agreeField').style.display = m === 'signup' ? 'block' : 'none';
       document.getElementById('submitBtn').textContent = m === 'signup' ? '회원가입' : '로그인';
       document.getElementById('password').setAttribute('autocomplete', m === 'signup' ? 'new-password' : 'current-password');
       var fr = document.getElementById('forgotRow');
@@ -188,8 +201,14 @@
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const name = document.getElementById('name').value.trim();
+      const agree = document.getElementById('agree').checked;
       const url = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
       lastEmail = email;
+
+      if (mode === 'signup' && !agree) {
+        setMsg('이용약관과 개인정보처리방침에 동의해야 가입할 수 있습니다.', true);
+        return false;
+      }
 
       btn.disabled = true;
       setMsg('처리 중...');
@@ -197,7 +216,7 @@
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, name })
+          body: JSON.stringify({ email, password, name, agree })
         });
         const data = await res.json();
 

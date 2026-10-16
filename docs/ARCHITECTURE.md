@@ -254,7 +254,7 @@ backdrop-filter: blur(12px)
 
 - **사용자 인증**: 이메일/비밀번호 (werkzeug `pbkdf2:sha256` 해싱), Flask 서명 세션 쿠키
   - `SECRET_KEY` 환경변수로 세션 서명 (프로덕션 필수 — 미지정 시 재시작마다 세션 무효화)
-  - `@app.before_request` 전역 게이트로 모든 페이지/API 보호 (`/login`, `/api/auth/*` 제외)
+  - `@app.before_request` 전역 게이트로 모든 페이지/API 보호 (`/login`, `/api/auth/*`, 법적 고지 페이지 `/terms`·`/privacy`·`/refund`·`/api/legal/*` 제외)
 - AI API 키는 서버 측 저장 (클라이언트 노출 없음)
 - **데이터 격리 완료(Step 2)**: 7개 테이블에 `user_id` 부여 + 복합 UNIQUE 재구축.
   요청마다 `db.set_current_user()`로 컨텍스트 설정 → 모든 DB 함수가 `_uid()`로 자동 필터.
@@ -356,6 +356,12 @@ backdrop-filter: blur(12px)
 - **관리자 API**: `GET/POST /api/admin/backups`, `GET /api/admin/backups/<name>/download`(`send_file`), `DELETE /api/admin/backups/<name>`. 파일명은 `database.backup_path_if_valid()`가 정규식으로 검증 → **경로탈출/임의 파일 접근 차단**.
 - **다층 방어**: 같은 볼륨 백업 = 앱 버그·실수 삭제 보호. **볼륨 유실** 대비는 (a) 관리자 다운로드(오프사이트) + (b) **Fly 볼륨 스냅샷**(`fly volumes snapshots`, 보존기간 `--snapshot-retention`). "백업=안전" 과신 금지.
 
+### 11.10 법적 고지 (약관/개인정보/환불 + 사업자 정보)
+
+- **공개 페이지**: `/terms`·`/privacy`·`/refund` → `legal.html`(page 분기, 표준 약관 템플릿 + `get_legal_settings()` 주입, "법률검토 권장" 배너). `_PUBLIC_PREFIXES`로 비로그인 접근 허용.
+- **사업자 정보**: `LEGAL_SETTING_KEYS`를 app_settings에 저장(운영자 `/admin` 편집). **실제 법적 값(사업자등록번호 등)은 코드가 생성하지 않고 운영자 입력** — 미설정은 "(미설정)".
+- **동의**: 가입 시 `agree` 필수(서버 검증) → `users.agreed_terms_at` 기록. 결제 전 고지는 업그레이드 모달에서 `/api/legal/info`로 사업자정보·정책 링크 표시.
+
 ### 11.9 실결제 (Billing / Toss Payments)
 
 - **모델**: **단건 1개월 이용권**. 승인 성공 → `set_user_plan()`으로 요금제 1개월 부여(월주기 = 구매 시점). 자동 갱신(빌링)은 백로그.
@@ -372,4 +378,4 @@ backdrop-filter: blur(12px)
 ---
 
 *이 문서는 English Master v1.1 기준으로 작성되었습니다.*
-*최종 업데이트: 2026-10-15 (실결제: 토스페이먼츠 단건 1개월 이용권 — 서버 주문·금액 변조 차단·서버 승인·멱등 부여, 운영자 키 편집)*
+*최종 업데이트: 2026-10-16 (결제 법적 고지: 약관/개인정보/환불 공개 페이지·사업자정보 운영자 편집·가입 동의 — 실결제 전환 요건)*

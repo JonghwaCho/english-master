@@ -63,6 +63,13 @@
 - **API**: `POST /api/billing/subscribe`, `GET /api/billing/auth-confirm`, `POST /api/billing/cancel-subscription`, `GET /api/billing/subscription`
 - **운영**: 토스 **자동결제(빌링) 사용 신청** + 운영 키 필요. 단건 결제와 **병행** 제공
 
+### F-0.13 법적 고지 (약관/개인정보/환불 + 사업자 정보)
+- **공개 페이지**: `/terms`(이용약관), `/privacy`(개인정보처리방침), `/refund`(환불·취소 정책) — 로그인 불필요(`_PUBLIC_PREFIXES`). 단일 템플릿 `legal.html`이 page별 표준 약관 본문 + 사업자 정보를 렌더. **"시행 전 법률 검토 권장" 배너** 포함
+- **사업자 정보(운영자 편집)**: `/admin → 사업자·법적 정보`에서 상호·대표자·사업자등록번호·통신판매업신고번호·주소·연락처·개인정보보호책임자·호스팅·약관시행일 입력. app_settings 저장(코드가 임의 생성하지 않음, 미설정은 "(미설정)")
+- **가입 동의**: 회원가입 시 약관·개인정보처리방침 **동의 체크 필수**(프론트+서버 검증), `users.agreed_terms_at`에 동의 시각 기록. 구글 OAuth는 로그인 화면 안내로 고지(동의 화면은 백로그)
+- **결제 전 고지(전자상거래법)**: 업그레이드 모달에 사업자정보 요약 + 약관·환불정책 링크 + "결제 시 동의 간주" 안내. 사이드바·로그인 화면에도 약관/개인정보/환불 링크
+- **API**: `GET /api/legal/info`(공개), 관리자 `GET/PUT /api/admin/legal-settings`
+
 ### F-0.10 DB 백업 (Backup)
 - **자동 백업**: 백그라운드 스레드가 **매일 1회(UTC)** SQLite **온라인 백업 API**(`conn.backup`)로 **실행 중에도 일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 1시간마다 깨어나 "오늘 백업 없으면 1회" 수행. `ENABLE_BACKUP`(기본 1)로 on/off
 - **보관 정책**: 최신 **14개**만 유지(롤링 prune). 파일명이 타임스탬프라 이름 역순=최신순
@@ -472,6 +479,9 @@ process_review(item_id, item_type, correct):
 | GET | /api/admin/users/:id/detail | 사용자 상세(요금제·사용량·결제) |
 | POST | /api/admin/users/:id/suspend | 계정 정지/해제 |
 | DELETE | /api/admin/users/:id | 계정 + 데이터 삭제 |
+| GET/PUT | /api/admin/legal-settings | 사업자·법적 정보 조회·편집 |
+| GET | /api/legal/info | 사업자 정보(공개, 푸터·결제 고지) |
+| GET | /terms · /privacy · /refund | 약관·개인정보·환불 공개 페이지 |
 
 ### 결제 API
 | Method | Endpoint | 설명 |
@@ -510,6 +520,7 @@ process_review(item_id, item_type, correct):
 | v1.12 | 2026-10-15 | 환불/취소 — 관리자 결제 취소(토스 cancel API, 전액) + 요금제 free 회수, 멱등 |
 | v1.13 | 2026-10-15 | 관리자 확장 — 사용자 정지/해제(전면 차단)·삭제(데이터 cascade, 캐시 보존)·상세 조회, 관리자/본인 보호 |
 | v1.14 | 2026-10-15 | 자동 정기결제(빌링) — 카드등록→빌링키→첫 청구→매월 자동 청구·갱신(스케줄러), 실패 3회 해지, 사용자 해지, 빌링키 비노출, 단건과 병행 |
+| v1.15 | 2026-10-16 | 결제 법적 고지 — 약관/개인정보/환불 공개 페이지(표준 템플릿+법률검토 배너), 사업자정보 운영자 편집, 가입 동의 필수·기록, 결제 전 고지, 푸터 링크 |
 
 ---
 

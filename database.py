@@ -385,6 +385,9 @@ def _migrate_email(conn):
     # 계정 정지 플래그 (관리자 기능)
     _add_col(conn, "users", "suspended", "INTEGER DEFAULT 0")
 
+    # 약관 동의 시각(가입 시 기록). 기존 사용자는 NULL(가입 당시 약관 없던 때)
+    _add_col(conn, "users", "agreed_terms_at", "TEXT")
+
     # 자동 정기결제(빌링) 구독 상태
     _add_col(conn, "users", "billing_key", "TEXT")            # 토스 빌링키(카드 청구 권한 — 민감)
     _add_col(conn, "users", "billing_customer_key", "TEXT")   # 사용자별 고정 customerKey
@@ -2160,6 +2163,52 @@ def due_subscriptions():
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── 사업자/법적 정보 (전자상거래법 고지 + 약관) ────────────
+# 상호·사업자등록번호·통신판매업신고번호 등 '실제 법적 정보'는 운영자가 /admin에서
+# 직접 입력한다(코드가 임의로 지어내지 않는다). 약관/개인정보/환불정책 본문은 표준
+# 템플릿(templates/legal.html)이며, 이 설정값을 끼워 넣어 렌더한다.
+LEGAL_SETTING_KEYS = (
+    "company_name", "ceo_name", "biz_reg_no", "mail_order_no", "address",
+    "contact_email", "contact_phone", "privacy_officer", "hosting_provider",
+    "terms_date", "service_name",
+)
+
+
+def get_legal_settings():
+    """사업자/법적 정보. 미설정 값은 빈 문자열."""
+    conn = get_conn()
+    ph = ",".join("?" * len(LEGAL_SETTING_KEYS))
+    rows = conn.execute(
+        f"SELECT key, value FROM app_settings WHERE key IN ({ph})",
+        LEGAL_SETTING_KEYS).fetchall()
+    conn.close()
+    d = {r["key"]: (r["value"] or "") for r in rows}
+    out = {k: d.get(k, "") for k in LEGAL_SETTING_KEYS}
+    if not out.get("service_name"):
+        out["service_name"] = "English Master"
+    return out
+
+
+def update_legal_settings(**fields):
+    """관리자: 사업자/법적 정보 부분 갱신(허용 키만)."""
+    conn = get_conn()
+    for k, v in fields.items():
+        if k not in LEGAL_SETTING_KEYS:
+            continue
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (k, "" if v is None else str(v).strip()))
+    conn.commit()
+    conn.close()
+
+
+def set_user_agreed_terms(user_id):
+    """가입 시 약관 동의 시각 기록."""
+    conn = get_conn()
+    conn.execute("UPDATE users SET agreed_terms_at=datetime('now') WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
 
 
 def set_verify_token(user_id, token):

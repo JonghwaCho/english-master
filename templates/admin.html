@@ -138,6 +138,15 @@
       </table>
     </div>
 
+    <div class="section-title">사업자 · 법적 정보 (약관/결제 고지)</div>
+    <div class="plan-card" style="max-width:560px;margin-bottom:8px;" id="legal-card">
+      <div class="loading">불러오는 중...</div>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:28px;">
+      여기 입력한 정보가 <a href="/terms" target="_blank">이용약관</a>·<a href="/privacy" target="_blank">개인정보처리방침</a>·<a href="/refund" target="_blank">환불정책</a> 페이지와 결제 화면 고지에 표시됩니다.
+      전자상거래법상 유료 서비스는 상호·사업자등록번호·통신판매업 신고번호 등을 고지해야 합니다. <b>약관 본문은 표준 템플릿이므로 시행 전 법률 검토를 권장합니다.</b>
+    </p>
+
     <div class="section-title">사용자 (<span id="user-count">0</span>명)</div>
     <div class="table-wrap">
       <table>
@@ -175,6 +184,7 @@
           fetch('/api/admin/billing-settings').then(r => r.json()),
           fetch('/api/admin/payments').then(r => r.json()),
         ]);
+        var legal = await fetch('/api/admin/legal-settings').then(r => r.json());
         PLANS = plans;
         renderStats(stats);
         renderPlans(plans);
@@ -182,6 +192,7 @@
         renderBackups(backups);
         renderBilling(billing);
         renderPayments(payments);
+        renderLegal(legal);
         renderUsers(users);
       } catch (e) {
         document.getElementById('user-rows').innerHTML =
@@ -341,6 +352,41 @@
         var data = await fetch('/api/admin/backups').then(function (r) { return r.json(); });
         renderBackups(data);
       } catch (e) {}
+    }
+
+    var LEGAL_FIELDS = [
+      ['service_name', '서비스명'], ['company_name', '상호(법인/상호명)'], ['ceo_name', '대표자'],
+      ['biz_reg_no', '사업자등록번호'], ['mail_order_no', '통신판매업 신고번호'],
+      ['address', '사업장 주소'], ['contact_email', '고객문의 이메일'], ['contact_phone', '고객센터 전화'],
+      ['privacy_officer', '개인정보 보호책임자'], ['hosting_provider', '호스팅 제공자'],
+      ['terms_date', '약관 시행일 (예: 2026-10-16)'],
+    ];
+
+    function renderLegal(s) {
+      s = s || {};
+      var el = document.getElementById('legal-card');
+      if (!el) return;
+      el.innerHTML = LEGAL_FIELDS.map(function (f) {
+        return field(f[1], 'lg-' + f[0], s[f[0]] || '', 'text', '');
+      }).join('') + '<button class="btn" onclick="saveLegal(this)">저장</button>';
+    }
+
+    async function saveLegal(btn) {
+      var body = {};
+      LEGAL_FIELDS.forEach(function (f) {
+        body[f[0]] = (document.getElementById('lg-' + f[0]).value || '').trim();
+      });
+      btn.disabled = true; var old = btn.textContent; btn.textContent = '저장 중...';
+      try {
+        var res = await fetch('/api/admin/legal-settings', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || '저장 실패');
+        renderLegal(await res.json());
+        btn.textContent = '✓ 저장됨';
+      } catch (e) { alert(e.message || '저장 실패'); }
+      finally { setTimeout(function () { btn.textContent = old; btn.disabled = false; }, 1200); }
     }
 
     function renderBilling(s) {

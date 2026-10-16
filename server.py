@@ -52,7 +52,8 @@ ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").sp
 
 # ── 인증 게이트 ─────────────────────────────────────────
 # 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
-_PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health", "/reset-password")
+_PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health", "/reset-password",
+                    "/terms", "/privacy", "/refund", "/api/legal/")
 
 
 @app.before_request
@@ -363,6 +364,8 @@ def api_signup():
         return jsonify({"error": "올바른 이메일을 입력하세요."}), 400
     if len(password) < 8:
         return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+    if not data.get("agree"):
+        return jsonify({"error": "이용약관과 개인정보처리방침에 동의해야 가입할 수 있습니다."}), 400
     if db.get_user_by_email(email):
         return jsonify({"error": "이미 가입된 이메일입니다."}), 409
 
@@ -374,6 +377,7 @@ def api_signup():
     )
     if not user:
         return jsonify({"error": "가입에 실패했습니다."}), 500
+    db.set_user_agreed_terms(user["id"])   # 약관 동의 시각 기록
 
     # 최초 운영자(첫 가입자 = 관리자)는 자동 인증한다.
     # 닭-달걀 방지: SMTP를 설정하려면 /admin 로그인이 필요한데, 로그인엔 인증이 필요하고,
@@ -745,6 +749,29 @@ def admin_page():
     return render_template("admin.html")
 
 
+# ── 법적 고지 페이지(공개) — 약관/개인정보/환불 ──────────
+
+@app.route("/terms")
+def page_terms():
+    return render_template("legal.html", page="terms", info=db.get_legal_settings())
+
+
+@app.route("/privacy")
+def page_privacy():
+    return render_template("legal.html", page="privacy", info=db.get_legal_settings())
+
+
+@app.route("/refund")
+def page_refund():
+    return render_template("legal.html", page="refund", info=db.get_legal_settings())
+
+
+@app.route("/api/legal/info")
+def api_legal_info():
+    """사업자/법적 정보(공개, 비민감). 푸터·결제 전 고지 표시용."""
+    return jsonify(db.get_legal_settings())
+
+
 @app.route("/api/admin/users", methods=["GET"])
 def api_admin_users():
     guard = _require_admin()
@@ -980,6 +1007,27 @@ def api_admin_payments():
     if guard:
         return guard
     return jsonify(db.list_payments(limit=200))
+
+
+@app.route("/api/admin/legal-settings", methods=["GET"])
+def api_admin_legal_get():
+    """사업자/법적 정보 조회(관리자)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(db.get_legal_settings())
+
+
+@app.route("/api/admin/legal-settings", methods=["PUT"])
+def api_admin_legal_put():
+    """사업자/법적 정보 저장(관리자)."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.json or {}
+    fields = {k: data[k] for k in db.LEGAL_SETTING_KEYS if k in data}
+    db.update_legal_settings(**fields)
+    return jsonify(db.get_legal_settings())
 
 
 @app.route("/api/admin/payments/<order_id>/cancel", methods=["POST"])
