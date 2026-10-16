@@ -5512,7 +5512,9 @@ async function loadAISettings() {
     }
     const statusEl = document.getElementById('ai-key-status');
     if (statusEl) {
-      if (s.has_key) {
+      if (s.admin_unlimited && !s.has_key) {
+        statusEl.innerHTML = '<span style="color:var(--green);">🛠 관리자 · 서버 키로 무제한 사용</span>';
+      } else if (s.has_key) {
         statusEl.innerHTML = '<span style="color:var(--green);">✔ 내 개인 API 키 사용 중 (사용량 제한 없음)</span>';
       } else if (s.server_key_available) {
         statusEl.innerHTML = '<span style="color:var(--cyan);">🔑 서버 기본 키로 동작 중 (개인 키 없이 사용 가능)</span>' +
@@ -6430,6 +6432,16 @@ async function refreshPlanBadge() {
     var u = d.usage;
     var el = document.getElementById('plan-badge');
     if (!el) return;
+    if (d.admin) {
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<span style="color:var(--text2);">🛠 관리자</span>' +
+        '<span style="color:var(--green,#16a34a);font-weight:700;">무제한</span></div>' +
+        '<div style="color:var(--text3);margin-top:3px;font-size:11px;">콘텐츠·AI 제한 없음</div>';
+      el.style.display = 'block';
+      el.style.cursor = 'default';
+      el.onclick = null;
+      return;
+    }
     var full = u.count >= u.limit;
     var period = u.period_type === 'lifetime' ? '평생' : '이번 달';
     var color = full ? 'var(--amber, #f59e0b)' : 'var(--primary)';

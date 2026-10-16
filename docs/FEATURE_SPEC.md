@@ -21,6 +21,7 @@
 - **관리자 판별**: `ADMIN_EMAILS` 환경변수(콤마 구분) 또는 미설정 시 첫 사용자(id=1)
 - **표시**: 전체 사용자 목록(이메일·이름·가입일·로그인수단·개인AI키 여부·영상/문장/단어/복습 수·최근 활동), 요약 통계(전체/7일 신규·활성 사용자, 총 콘텐츠)
 - **주의**: 비밀번호 해시·AI 키 값은 노출하지 않음. 관리자 조회는 `_uid()` 필터를 우회하므로 반드시 서버 측 is_admin 검증 후 호출
+- **관리자 무제한**: 관리자(`is_admin`)는 **콘텐츠 등록 한도·AI 사용량 한도 모두 면제**(요금제 무관). `_finalize_registration`·`_ai_guard`에서 우회, 관리자 AI 호출은 사용량 미기록(지표 오염 방지). 배지·AI 상태에 "🛠 관리자 · 무제한" 표기(`/api/me/plan.admin`, `/api/ai/*.admin_unlimited`)
 - **사용자 관리(확장)**: 각 사용자 행에서 **상세**(요금제·콘텐츠/AI 사용량·결제 내역), **정지/해제**(`users.suspended` → `before_request`에서 전면 차단, API 403/페이지 리다이렉트), **삭제**(계정 + 사용자 범위 데이터 전부, 전역 캐시는 보존, 이중 확인). **관리자·본인 계정은 정지·삭제 불가**(락아웃 방지). API: `GET /api/admin/users/<id>/detail`, `POST /api/admin/users/<id>/suspend {suspended}`, `DELETE /api/admin/users/<id>`
 
 ### F-0.9 이메일 인증 (Email Verification)

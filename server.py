@@ -709,6 +709,8 @@ def _finalize_registration(db_video_id):
     is_new = db.record_content_registration(db_video_id)
     if not is_new:
         return None  # 재등록 — 할당량 소비 없음
+    if is_admin(current_user()):
+        return None  # 관리자는 콘텐츠 등록 한도 무제한
     usage = db.get_usage(session.get("user_id"))
     if usage["count"] > usage["limit"]:
         # 한도 초과: 방금 생성한 콘텐츠와 원장 기록을 되돌린다
@@ -735,6 +737,8 @@ def _ai_guard():
     u = current_user()
     if not u:
         return None, None  # before_request에서 이미 로그인 강제됨(방어적 처리)
+    if is_admin(u):
+        return None, None  # 관리자는 AI 사용량 무제한(기록도 하지 않음)
     if u.get("ai_key"):
         return None, None  # 개인 키 → 제한·기록 대상 아님
     usage = db.get_ai_usage(u["id"])
@@ -1183,6 +1187,7 @@ def api_my_plan():
     return jsonify({
         "usage": db.get_usage(uid),
         "plans": db.get_plans(),
+        "admin": is_admin(current_user()),   # 관리자는 한도 무제한
     })
 
 
@@ -2570,6 +2575,7 @@ def api_ai_settings_get():
         "has_key": bool(user_key),
         "server_key_available": server_available,  # 개인 키 미설정 시 서버 키로 동작하는지
         "using_personal_key": bool(user_key),
+        "admin_unlimited": is_admin(u),            # 관리자는 무제한
         "usage": usage,                             # 개인 키 사용 시엔 참고용(제한 미적용)
     })
 
@@ -2582,6 +2588,7 @@ def api_ai_usage():
         return jsonify({"error": "unauthorized"}), 401
     usage = db.get_ai_usage(u["id"])
     usage["using_personal_key"] = bool(u.get("ai_key"))
+    usage["admin_unlimited"] = is_admin(u)   # 관리자는 무제한
     return jsonify(usage)
 
 
