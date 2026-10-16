@@ -93,6 +93,11 @@
 - **결제 전 고지(전자상거래법)**: 업그레이드 모달에 사업자정보 요약 + 약관·환불정책 링크 + "결제 시 동의 간주" 안내. 사이드바·로그인 화면에도 약관/개인정보/환불 링크
 - **API**: `GET /api/legal/info`(공개), 관리자 `GET/PUT /api/admin/legal-settings`
 
+### F-0.17 백업 오프사이트 자동화 (S3 호환)
+- 백업 생성 직후 S3 호환 스토리지(AWS S3/Cloudflare R2/Backblaze B2)로 자동 업로드. **boto3 없이 stdlib SigV4**(path-style PUT), AWS 공식 테스트벡터로 검증
+- 활성 조건: `BACKUP_S3_ENDPOINT`·`BACKUP_S3_BUCKET`·`BACKUP_S3_ACCESS_KEY`·`BACKUP_S3_SECRET_KEY`(+선택 `BACKUP_S3_REGION`·`BACKUP_S3_PREFIX`) 모두 설정. 미설정 시 무동작, 실패는 베스트에포트(로컬 백업 영향 없음)
+- `/api/admin/backups`가 `offsite` 설정 여부 표시. `backup_offsite.py`(is_configured/upload_file)
+
 ### F-0.10 DB 백업 (Backup)
 - **자동 백업**: 백그라운드 스레드가 **매일 1회(UTC)** SQLite **온라인 백업 API**(`conn.backup`)로 **실행 중에도 일관된** 스냅샷을 `DATA_DIR/backups/english_master-YYYYMMDD-HHMMSS.db`에 생성. 1시간마다 깨어나 "오늘 백업 없으면 1회" 수행. `ENABLE_BACKUP`(기본 1)로 on/off
 - **보관 정책**: 최신 **14개**만 유지(롤링 prune). 파일명이 타임스탬프라 이름 역순=최신순

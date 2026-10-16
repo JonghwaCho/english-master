@@ -40,6 +40,7 @@
 | 학습 리마인더 메일 | '오늘 복습 N개' 하루 1회 자동 메일(SMTP 재사용) + 원클릭 수신거부 | 2026-10-16 |
 | 운영 대시보드(MRR) | admin 매출·구독 지표(MRR·활성구독·당월/누적 매출·환불·유료) | 2026-10-16 |
 | 결제 후속(B) | 부분환불·카드(빌링키) 변경·영수증 페이지·구글 가입 동의 기록 | 2026-10-16 |
+| 백업 오프사이트(C) | S3 호환 스토리지 자동 업로드(stdlib SigV4), 설정 시 활성 | 2026-10-16 |
 
 ### ⬜ 남은 일 (우선순위별)
 
@@ -70,6 +71,21 @@
 ---
 
 ## 결정 기록
+
+### 2026-10-16 · 백업 오프사이트 자동화 (S3 호환)
+
+- **배경**: 일일 백업은 같은 Fly 볼륨에 있어 **볼륨 자체 유실**에는 무력했다(이전 결정에서 "다운로드로 수동 오프사이트"로 두고 미룬 과제). 자동 오프사이트가 필요.
+- **결정**: 백업 생성 직후, 환경변수로 **S3 호환 스토리지**(AWS S3 / Cloudflare R2 / Backblaze B2)가 설정돼 있으면 자동 업로드. **boto3 없이 표준 라이브러리만으로 AWS Signature V4(path-style PUT)** 구현(`backup_offsite.py`). 베스트에포트(실패해도 로컬 백업·서비스에 영향 없음).
+- **이유/철학**:
+  - *외부 라이브러리 0 유지*: 프로젝트 원칙(표준 라이브러리만)에 맞춰 SigV4를 직접 구현. requirements를 늘리지 않음.
+  - *정확성은 공식 테스트벡터로 보증*: AWS 문서의 **서명키 파생 예제**(`c4afb1cc…`)와 **SigV4 test-suite get-vanilla 최종 서명**(`5fa00fa3…`)에 내 구현이 일치함을 테스트로 고정 → 서명 로직이 스펙과 동일함을 증명.
+  - *설정 없으면 완전 무동작*: 네 개 env(endpoint/bucket/access/secret)가 다 있어야 활성. 미설정이면 조용히 건너뜀(기존 동작 불변).
+  - *path-style*: 버킷을 경로에 두는 방식(`endpoint/bucket/key`)이 R2·B2·S3 모두에서 통일되게 동작.
+- **대안(기각)**: boto3 추가(의존성·용량 → stdlib SigV4), presigned URL 업로드(서버가 직접 PUT이면 불필요), 전용 백업 SaaS(계정·비용 → 사용자가 가진 S3 버킷 재사용).
+- **구현**: `backup_offsite.py`(`is_configured`/`signing_key`/`build_authorization`/`upload_file`). `server.py` `_offsite_upload()`를 자동 백업 루프·관리자 수동 백업 직후 호출, `/api/admin/backups`에 `offsite` 플래그, admin 안내에 상태 표기.
+- **운영**: `BACKUP_S3_ENDPOINT`·`BACKUP_S3_BUCKET`·`BACKUP_S3_ACCESS_KEY`·`BACKUP_S3_SECRET_KEY`(+선택 `BACKUP_S3_REGION`/`BACKUP_S3_PREFIX`). Fly: `fly secrets set ...`.
+- **검증**: AWS SigV4 공식 벡터 2종 일치, 모의 S3 서버 대상 실제 PUT(경로·Authorization·content-sha256·본문) 검증, 미설정 시 무동작 — 테스트 통과.
+- **상태**: ✅ 완료. (운영자가 S3/R2 버킷·키 설정 시 자동 동작)
 
 ### 2026-10-16 · 결제 후속 (부분환불 · 카드변경 · 영수증 · 구글 동의)
 

@@ -22,6 +22,7 @@ import database as db
 import youtube_service as yt
 import text_utils
 import email_service
+import backup_offsite
 from queue import Queue
 from srs import get_level_name, format_next_review
 
@@ -935,6 +936,7 @@ def api_admin_list_backups():
         "backups": db.list_backups(),
         "auto": os.environ.get("ENABLE_BACKUP", "1") == "1",  # 자동 백업 켜짐 여부
         "keep": 14,                                           # 보관 개수(prune_backups 기본)
+        "offsite": backup_offsite.is_configured(),            # 오프사이트(S3) 업로드 설정 여부
     })
 
 
@@ -946,6 +948,7 @@ def api_admin_create_backup():
         return guard
     try:
         info = db.create_backup()
+        _offsite_upload(info["name"])
         return jsonify({"ok": True, "backup": info})
     except Exception as e:
         return jsonify({"error": f"백업 실패: {e}"}), 500
@@ -1285,6 +1288,20 @@ def _billing_loop():
         except Exception as e:
             logging.warning(f"[Billing] loop error: {e}")
         time.sleep(3600)
+
+
+def _offsite_upload(backup_name):
+    """백업 파일을 오프사이트(S3 호환)로 업로드(설정된 경우에만, 베스트에포트)."""
+    if not backup_offsite.is_configured():
+        return
+    path = db.backup_path_if_valid(backup_name)
+    if not path:
+        return
+    ok, msg = backup_offsite.upload_file(path)
+    if ok:
+        logging.info(f"[OffsiteBackup] uploaded {backup_name}: {msg}")
+    else:
+        logging.warning(f"[OffsiteBackup] {backup_name} failed: {msg}")
 
 
 def _app_base_url():
@@ -2474,6 +2491,7 @@ def _backup_loop():
             if db.latest_backup_date_utc() != today:
                 info = db.create_backup()
                 logging.info(f"[Backup] auto backup created: {info['name']} ({info['size']} bytes)")
+                _offsite_upload(info["name"])
         except Exception as e:
             logging.warning(f"[Backup] auto backup error: {e}")
         time.sleep(3600)  # 1시간마다 확인

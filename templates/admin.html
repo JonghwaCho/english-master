@@ -300,7 +300,8 @@
       var info = document.getElementById('backup-info');
       if (info) {
         info.textContent = (data && data.auto ? '자동 백업 ON · ' : '자동 백업 OFF · ') +
-          '최신 ' + ((data && data.keep) || 14) + '개 보관 · 현재 ' + backups.length + '개';
+          '최신 ' + ((data && data.keep) || 14) + '개 보관 · 현재 ' + backups.length + '개 · ' +
+          (data && data.offsite ? '오프사이트(S3) 업로드 ON' : '오프사이트 미설정');
       }
       var rows = document.getElementById('backup-rows');
       if (!rows) return;
