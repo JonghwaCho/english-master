@@ -53,7 +53,7 @@ ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").sp
 # ── 인증 게이트 ─────────────────────────────────────────
 # 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
 _PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health", "/reset-password",
-                    "/terms", "/privacy", "/refund", "/api/legal/")
+                    "/terms", "/privacy", "/refund", "/api/legal/", "/welcome", "/unsubscribe")
 
 
 @app.before_request
@@ -65,6 +65,9 @@ def _require_login():
     if not uid:
         if path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
+        # 비로그인 방문자가 앱 루트로 오면 공개 랜딩 페이지로 안내(마케팅 입구)
+        if path == "/":
+            return redirect("/welcome")
         return redirect("/login")
     # 이후 모든 DB 호출이 이 사용자로 자동 격리되도록 컨텍스트 설정
     db.set_current_user(uid)
@@ -770,6 +773,14 @@ def page_refund():
 def api_legal_info():
     """사업자/법적 정보(공개, 비민감). 푸터·결제 전 고지 표시용."""
     return jsonify(db.get_legal_settings())
+
+
+@app.route("/welcome")
+def page_landing():
+    """공개 랜딩 페이지(마케팅). 로그인한 사용자는 앱으로 보냄."""
+    if session.get("user_id"):
+        return redirect("/")
+    return render_template("landing.html", plans=db.get_plans(), info=db.get_legal_settings())
 
 
 @app.route("/api/admin/users", methods=["GET"])

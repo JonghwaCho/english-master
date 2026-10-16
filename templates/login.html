@@ -155,6 +155,14 @@
       el.className = 'msg error';
     })();
 
+    // 랜딩에서 "무료로 시작"으로 넘어온 경우 회원가입 탭으로 전환
+    (function () {
+      try {
+        var q = new URLSearchParams(window.location.search);
+        if (q.get('signup') === '1') { setTimeout(function () { switchMode('signup'); }, 0); }
+      } catch (e) {}
+    })();
+
     function switchMode(m) {
       mode = m;
       document.getElementById('tab-login').classList.toggle('active', m === 'login');

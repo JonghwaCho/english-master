@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ info.service_name }} · 영상으로 배우는 영어, 망각곡선 복습</title>
+<meta name="description" content="좋아하는 유튜브 영상으로 영어 문장을 익히고, 에빙하우스 망각곡선 복습으로 오래 기억하세요. {{ info.service_name }}.">
+<style>
+  :root { --bg:#0b1020; --panel:#121a33; --card:#16203c; --text1:#eef2ff; --text2:#b9c3e6; --text3:#8a95bf; --border:#26314f; --primary:#6366f1; --primary2:#818cf8; --accent:#34d399; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text1); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+  .container { max-width:1040px; margin:0 auto; padding:0 20px; }
+  header { position:sticky; top:0; z-index:10; backdrop-filter:blur(10px); background:rgba(11,16,32,.7); border-bottom:1px solid var(--border); }
+  .nav { display:flex; align-items:center; height:62px; gap:16px; }
+  .brand { font-weight:800; font-size:18px; }
+  .brand span { color:var(--primary2); }
+  .nav .spacer { margin-left:auto; }
+  .btn { display:inline-block; padding:10px 18px; border-radius:10px; font-weight:700; text-decoration:none; font-size:14px; cursor:pointer; border:none; }
+  .btn-ghost { color:var(--text2); }
+  .btn-primary { background:linear-gradient(135deg,var(--primary),var(--primary2)); color:#fff; }
+  .btn-lg { padding:14px 28px; font-size:16px; }
+  .hero { padding:72px 0 48px; text-align:center; }
+  .hero h1 { font-size:42px; line-height:1.2; letter-spacing:-.5px; margin-bottom:16px; }
+  .hero h1 .g { background:linear-gradient(135deg,var(--primary2),var(--accent)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero p { color:var(--text2); font-size:18px; max-width:620px; margin:0 auto 28px; }
+  .hero .cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .hero .sub { color:var(--text3); font-size:13px; margin-top:14px; }
+  .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; padding:28px 0 8px; }
+  .feature { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; }
+  .feature .ic { font-size:26px; margin-bottom:10px; }
+  .feature h3 { font-size:16px; margin-bottom:6px; }
+  .feature p { color:var(--text3); font-size:14px; }
+  .section-title { text-align:center; font-size:26px; margin:56px 0 8px; }
+  .section-sub { text-align:center; color:var(--text3); margin-bottom:24px; font-size:14px; }
+  .plans { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; }
+  .plan { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:22px; display:flex; flex-direction:column; }
+  .plan.highlight { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+  .plan .name { font-weight:700; margin-bottom:4px; }
+  .plan .price { font-size:28px; font-weight:800; margin:6px 0 2px; }
+  .plan .price small { font-size:13px; color:var(--text3); font-weight:400; }
+  .plan ul { list-style:none; margin:14px 0 18px; color:var(--text2); font-size:14px; }
+  .plan li { padding:4px 0; }
+  .plan li::before { content:"✓ "; color:var(--accent); font-weight:700; }
+  .plan .btn { margin-top:auto; text-align:center; }
+  footer { border-top:1px solid var(--border); margin-top:64px; padding:28px 0 48px; color:var(--text3); font-size:13px; text-align:center; }
+  footer a { color:var(--text3); text-decoration:none; }
+  @media (max-width:560px){ .hero h1{font-size:32px;} .hero{padding:48px 0 32px;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="container nav">
+    <div class="brand">{{ info.service_name.split(' ')[0] }} <span>{{ info.service_name.split(' ')[1:] | join(' ') }}</span></div>
+    <div class="spacer"></div>
+    <a class="btn btn-ghost" href="/login">로그인</a>
+    <a class="btn btn-primary" href="/login?signup=1">무료로 시작</a>
+  </div>
+</header>
+
+<main class="container">
+  <section class="hero">
+    <h1>좋아하는 영상으로,<br><span class="g">영어가 기억에 남게</span></h1>
+    <p>유튜브 영상·자막으로 문장을 익히고, 에빙하우스 <b>망각곡선 복습</b>으로 잊을 때쯤 다시 만나 오래 기억하세요. AI가 직독직해·문법·단어까지 도와줍니다.</p>
+    <div class="cta">
+      <a class="btn btn-primary btn-lg" href="/login?signup=1">무료로 시작하기</a>
+      <a class="btn btn-ghost btn-lg" href="/login">이미 계정이 있어요</a>
+    </div>
+    <div class="sub">무료로 바로 시작 · 신용카드 불필요</div>
+  </section>
+
+  <section class="features">
+    <div class="feature"><div class="ic">🎬</div><h3>영상으로 학습</h3><p>유튜브 영상과 자막을 문장 단위로 끊어 듣고 따라 말하며 익혀요.</p></div>
+    <div class="feature"><div class="ic">🔁</div><h3>망각곡선 복습</h3><p>에빙하우스 간격 반복으로 잊을 때쯤 자동으로 다시 복습 큐에 올라와요.</p></div>
+    <div class="feature"><div class="ic">🤖</div><h3>AI 분석</h3><p>직독직해·문법 구조·단어 뜻·퀴즈를 AI가 즉석에서 만들어 줘요.</p></div>
+    <div class="feature"><div class="ic">📈</div><h3>학습 통계</h3><p>복습·단어·진행률을 한눈에. 꾸준함이 쌓이는 걸 눈으로 확인해요.</p></div>
+  </section>
+
+  <h2 class="section-title">요금제</h2>
+  <div class="section-sub">무료로 시작하고, 필요할 때 업그레이드하세요. 자동결제·1회 결제 모두 지원합니다.</div>
+  <div class="plans">
+    {% for p in plans %}
+    <div class="plan {{ 'highlight' if p.code == 'premium' }}">
+      <div class="name">{{ p.name }}</div>
+      <div class="price">{{ "{:,}".format(p.price) }}<small>원{{ '' if p.period_type == 'lifetime' else '/월' }}</small></div>
+      <ul>
+        <li>콘텐츠 {{ p.content_limit }}개{{ '/월' if p.period_type != 'lifetime' else ' (평생)' }}</li>
+        <li>AI 분석 {{ '무제한' if p.ai_monthly_limit < 0 else (p.ai_monthly_limit|string + '회/월') }}</li>
+        <li>망각곡선 복습 · 통계</li>
+      </ul>
+      <a class="btn {{ 'btn-primary' if p.code == 'premium' else 'btn-ghost' }}" href="/login?signup=1">{{ '무료로 시작' if p.price == 0 else '시작하기' }}</a>
+    </div>
+    {% endfor %}
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <div style="margin-bottom:8px;">© {{ info.company_name or info.service_name }}</div>
+    <a href="/terms">이용약관</a> · <a href="/privacy">개인정보처리방침</a> · <a href="/refund">환불·취소 정책</a>
+    {% if info.company_name %}<div style="margin-top:8px;">{{ info.company_name }}{% if info.biz_reg_no %} · 사업자등록번호 {{ info.biz_reg_no }}{% endif %}{% if info.contact_email %} · {{ info.contact_email }}{% endif %}</div>{% endif %}
+  </div>
+</footer>
+</body>
+</html>
