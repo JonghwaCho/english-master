@@ -80,6 +80,10 @@
 - **env**: `APP_BASE_URL`(메일 절대 링크), `REMINDER_HOUR_UTC`(기본 0), `ENABLE_REMINDER`(기본 1)
 - **구현**: `count_due_reviews`/`users_due_for_reminder`/`mark_reminder_sent`/`unsubscribe_by_token`, `email_service.reminder_email_bodies`
 
+### F-0.18 성장 심화 (SEO·OG + 지표 추이)
+- **SEO/OG**: 랜딩에 description·robots·canonical·Open Graph·Twitter 카드 메타(요청 호스트 기준 URL). 공개 `/robots.txt`(sitemap 링크·`/admin`·`/api/` disallow)와 `/sitemap.xml`(랜딩·약관·개인정보·환불)
+- **지표 추이**: admin "최근 30일 추이" — 일별 **가입자·매출** 인라인 SVG 막대 2종(단일 시리즈·범례 없음·베이스라인 고정·막대별 호버). `GET /api/admin/trends`(관리자), `admin_daily_series(30)`(빈 날 0 채움)
+
 ### F-0.14 랜딩 페이지 (공개 마케팅 입구)
 - **공개 랜딩** `/welcome`(로그인 불필요): 히어로(서비스 소개) + 주요 기능 + **요금제(plans 동적 렌더)** + CTA("무료로 시작"→`/login?signup=1`, "로그인"→`/login`) + 법적 푸터
 - **루트 안내**: 비로그인 사용자가 `/`에 오면 `/welcome`으로 리다이렉트(로그인 사용자는 앱). `/welcome`은 로그인 사용자가 오면 `/`로.
@@ -555,6 +559,8 @@ process_review(item_id, item_type, correct):
 | v1.17 | 2026-10-16 | 학습 리마인더 메일 — '오늘 복습 N개' 하루1회 자동 발송(조건부·SMTP 재사용), 원클릭 수신거부, 설정 토글 |
 | v1.18 | 2026-10-16 | 운영 대시보드(MRR) — admin 매출·구독 지표(MRR·활성구독·유료·당월/누적 매출·환불·결제건수) |
 | v1.19 | 2026-10-16 | 결제 후속 — 부분환불(cancelAmount), 카드(빌링키) 변경, 영수증 페이지+토스 receipt, 구글 가입 동의 기록 |
+| v1.20 | 2026-10-16 | 백업 오프사이트(S3 호환, stdlib SigV4) |
+| v1.21 | 2026-10-16 | 성장 심화 — SEO/OG 메타·robots/sitemap + admin 30일 가입·매출 추이 그래프(인라인 SVG) |
 
 ---
 

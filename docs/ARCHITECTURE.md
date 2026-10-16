@@ -364,6 +364,11 @@ backdrop-filter: blur(12px)
 - **사업자 정보**: `LEGAL_SETTING_KEYS`를 app_settings에 저장(운영자 `/admin` 편집). **실제 법적 값(사업자등록번호 등)은 코드가 생성하지 않고 운영자 입력** — 미설정은 "(미설정)".
 - **동의**: 가입 시 `agree` 필수(서버 검증) → `users.agreed_terms_at` 기록. 결제 전 고지는 업그레이드 모달에서 `/api/legal/info`로 사업자정보·정책 링크 표시.
 
+### 11.11 성장 (SEO·OG·지표 추이)
+
+- **SEO/OG**: `landing.html`에 메타(description/robots/canonical/OG/Twitter), 공개 `/robots.txt`·`/sitemap.xml`(요청 호스트 기준 URL). `_PUBLIC_PREFIXES`에 포함.
+- **지표 추이**: `admin_daily_series(30)`가 users·payments에서 일별 집계(빈 날 0). `/api/admin/trends` → admin.html `renderBarChart`(인라인 SVG, 단일 시리즈·호버 툴팁·이중축 없음).
+
 ### 11.9 실결제 (Billing / Toss Payments)
 
 - **모델**: **단건 1개월 이용권**. 승인 성공 → `set_user_plan()`으로 요금제 1개월 부여(월주기 = 구매 시점). 자동 갱신(빌링)은 백로그.

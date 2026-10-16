@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ info.service_name }} · 영상으로 배우는 영어, 망각곡선 복습</title>
 <meta name="description" content="좋아하는 유튜브 영상으로 영어 문장을 익히고, 에빙하우스 망각곡선 복습으로 오래 기억하세요. {{ info.service_name }}.">
+<meta name="robots" content="index, follow">
+{% set canonical = (base_url or '') + '/welcome' %}
+<link rel="canonical" href="{{ canonical }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ info.service_name }}">
+<meta property="og:title" content="{{ info.service_name }} · 영상으로 배우는 영어">
+<meta property="og:description" content="유튜브 영상으로 문장을 익히고 망각곡선 복습으로 오래 기억하는 영어 학습 서비스.">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ info.service_name }} · 영상으로 배우는 영어">
+<meta name="twitter:description" content="유튜브 영상으로 문장을 익히고 망각곡선 복습으로 오래 기억하는 영어 학습 서비스.">
 <style>
   :root { --bg:#0b1020; --panel:#121a33; --card:#16203c; --text1:#eef2ff; --text2:#b9c3e6; --text3:#8a95bf; --border:#26314f; --primary:#6366f1; --primary2:#818cf8; --accent:#34d399; }
   * { box-sizing:border-box; margin:0; padding:0; }

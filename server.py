@@ -54,7 +54,8 @@ ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").sp
 # ── 인증 게이트 ─────────────────────────────────────────
 # 로그인 관련 경로/정적 파일을 제외한 모든 요청은 로그인을 요구한다.
 _PUBLIC_PREFIXES = ("/login", "/api/auth/", "/static/", "/health", "/reset-password",
-                    "/terms", "/privacy", "/refund", "/api/legal/", "/welcome", "/unsubscribe")
+                    "/terms", "/privacy", "/refund", "/api/legal/", "/welcome", "/unsubscribe",
+                    "/robots.txt", "/sitemap.xml")
 
 
 @app.before_request
@@ -783,7 +784,28 @@ def page_landing():
     """공개 랜딩 페이지(마케팅). 로그인한 사용자는 앱으로 보냄."""
     if session.get("user_id"):
         return redirect("/")
-    return render_template("landing.html", plans=db.get_plans(), info=db.get_legal_settings())
+    return render_template("landing.html", plans=db.get_plans(), info=db.get_legal_settings(),
+                           base_url=request.host_url.rstrip("/"))
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    base = request.host_url.rstrip("/")
+    body = "User-agent: *\nAllow: /$\nAllow: /welcome\nAllow: /terms\nAllow: /privacy\nAllow: /refund\n" \
+           "Disallow: /admin\nDisallow: /api/\n" \
+           f"Sitemap: {base}/sitemap.xml\n"
+    return app.response_class(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    base = request.host_url.rstrip("/")
+    paths = ["/welcome", "/terms", "/privacy", "/refund"]
+    urls = "".join(f"<url><loc>{base}{p}</loc></url>" for p in paths)
+    body = ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            + urls + '</urlset>')
+    return app.response_class(body, mimetype="application/xml")
 
 
 @app.route("/api/admin/users", methods=["GET"])
@@ -809,6 +831,15 @@ def api_admin_stats():
     if guard:
         return guard
     return jsonify(db.admin_global_stats())
+
+
+@app.route("/api/admin/trends", methods=["GET"])
+def api_admin_trends():
+    """최근 30일 일별 추이(가입·매출). 관리자 대시보드 그래프용."""
+    guard = _require_admin()
+    if guard:
+        return guard
+    return jsonify(db.admin_daily_series(30))
 
 
 # ── API: Admin - 요금제 관리 ────────────────────────────

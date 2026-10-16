@@ -1574,6 +1574,27 @@ def delete_user(user_id):
         conn.close()
 
 
+def admin_daily_series(days=30):
+    """최근 days일 일별 추이: 가입자 수, 매출(DONE 합). 빈 날은 0으로 채운다(UTC)."""
+    conn = get_conn()
+    since = f"-{days - 1} days"
+    su = {r[0]: r[1] for r in conn.execute(
+        "SELECT date(created_at) d, COUNT(*) c FROM users "
+        "WHERE created_at >= date('now', ?) GROUP BY d", (since,)).fetchall()}
+    rv = {r[0]: r[1] for r in conn.execute(
+        "SELECT date(COALESCE(approved_at,created_at)) d, COALESCE(SUM(amount),0) s FROM payments "
+        "WHERE status='DONE' AND COALESCE(approved_at,created_at) >= date('now', ?) "
+        "GROUP BY d", (since,)).fetchall()}
+    conn.close()
+    today = datetime.utcnow().date()
+    dates = [(today - timedelta(days=days - 1 - i)).isoformat() for i in range(days)]
+    return {
+        "dates": dates,
+        "signups": [int(su.get(d, 0)) for d in dates],
+        "revenue": [int(rv.get(d, 0)) for d in dates],
+    }
+
+
 def admin_user_detail(user_id):
     """관리자: 사용자 1명의 상세(기본정보 + 콘텐츠/AI 사용량 + 결제 내역)."""
     u = get_user_by_id(user_id)

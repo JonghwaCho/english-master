@@ -92,6 +92,18 @@
     </div>
     <p class="muted" style="font-size:12px;margin-bottom:24px;">MRR은 활성 자동결제 구독의 월 요금 합계입니다. 매출은 성공(DONE) 결제 기준이며, 환불(CANCELED)은 별도 표시됩니다.</p>
 
+    <div class="section-title">📈 최근 30일 추이</div>
+    <div class="plans-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:28px;">
+      <div class="plan-card">
+        <div id="chart-signups-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">일별 가입자</div>
+        <div id="chart-signups"><div class="loading">불러오는 중...</div></div>
+      </div>
+      <div class="plan-card">
+        <div id="chart-revenue-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">일별 매출</div>
+        <div id="chart-revenue"><div class="loading">불러오는 중...</div></div>
+      </div>
+    </div>
+
     <div class="section-title">요금제 관리</div>
     <div class="plans-grid" id="plans-grid">
       <div class="loading">불러오는 중...</div>
@@ -200,6 +212,7 @@
         renderPayments(payments);
         renderLegal(legal);
         renderUsers(users);
+        loadTrends();
       } catch (e) {
         document.getElementById('user-rows').innerHTML =
           '<tr><td colspan="11" class="loading">불러오기 실패 (관리자 권한이 없을 수 있습니다)</td></tr>';
@@ -588,6 +601,49 @@
     }
 
     function won(n) { return (n || 0).toLocaleString() + '원'; }
+
+    // 단일 시리즈 막대 추이(인라인 SVG). 범례 없음(제목이 시리즈를 지칭),
+    // 베이스라인 고정·둥근 끝·은은한 축·막대별 호버 툴팁.
+    function renderBarChart(elId, dates, values, color, fmt) {
+      var el = document.getElementById(elId);
+      if (!el) return;
+      var W = 600, H = 150, padB = 22, padT = 10, padX = 4;
+      var n = values.length || 1;
+      var max = Math.max.apply(null, values.concat([1]));
+      var innerW = W - padX * 2, innerH = H - padB - padT;
+      var slot = innerW / n, gap = Math.min(3, slot * 0.25), bw = Math.max(1, slot - gap);
+      var bars = values.map(function (v, i) {
+        var h = max > 0 ? (v / max) * innerH : 0;
+        var x = padX + i * slot + gap / 2, y = padT + innerH - h;
+        var label = dates[i] + ' · ' + fmt(v);
+        return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) +
+          '" height="' + Math.max(0, h).toFixed(1) + '" rx="2" fill="' + color + '">' +
+          '<title>' + esc(label) + '</title></rect>';
+      }).join('');
+      var baseY = padT + innerH;
+      var axis = '<line x1="' + padX + '" y1="' + baseY + '" x2="' + (W - padX) + '" y2="' + baseY +
+        '" stroke="var(--border,#334155)" stroke-width="1"/>';
+      // x축 라벨: 처음·중간·끝 날짜(MM-DD)
+      function md(d) { return (d || '').slice(5); }
+      var ticks = [0, Math.floor(n / 2), n - 1].map(function (i) {
+        var x = padX + i * slot + slot / 2;
+        return '<text x="' + x.toFixed(1) + '" y="' + (H - 6) + '" font-size="10" fill="var(--text3,#94a3b8)" text-anchor="middle">' + md(dates[i]) + '</text>';
+      }).join('');
+      el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="최근 30일 추이">' +
+        axis + bars + ticks + '</svg>';
+    }
+
+    async function loadTrends() {
+      try {
+        var t = await fetch('/api/admin/trends').then(function (r) { return r.json(); });
+        var totalU = t.signups.reduce(function (a, b) { return a + b; }, 0);
+        var totalR = t.revenue.reduce(function (a, b) { return a + b; }, 0);
+        document.getElementById('chart-signups-title').textContent = '일별 가입자 · 30일 합계 ' + totalU + '명';
+        document.getElementById('chart-revenue-title').textContent = '일별 매출 · 30일 합계 ' + won(totalR);
+        renderBarChart('chart-signups', t.dates, t.signups, 'var(--primary,#6366f1)', function (v) { return v + '명'; });
+        renderBarChart('chart-revenue', t.dates, t.revenue, '#16a34a', function (v) { return won(v); });
+      } catch (e) {}
+    }
 
     function renderStats(s) {
       document.getElementById('stat-cards').innerHTML =
