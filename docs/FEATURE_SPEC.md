@@ -51,7 +51,12 @@
 - **설정(운영자)**: `/admin → 결제(Toss) 설정`에서 사용 on/off·client_key·secret_key(마스킹) 편집. env 시드(`TOSS_CLIENT_KEY`/`TOSS_SECRET_KEY`) 지원. 테스트 키(`test_ck_`/`test_sk_`) → 운영 키 무중단 교체
 - **원장**: `payments`(order_id UNIQUE, user_id, plan_code, amount, status READY|DONE|FAILED, payment_key, method, created_at, approved_at)
 - **API**: `GET /api/billing/config`, `POST /api/billing/checkout`, `GET /api/billing/confirm`, `GET /api/billing/fail`, `GET /api/billing/history`, 관리자 `GET/PUT /api/admin/billing-settings`·`GET /api/admin/payments`
-- **환불/취소(관리자)**: `/admin` 결제 목록의 DONE 건 → "취소/환불" → 토스 전체 취소(`POST /v1/payments/{paymentKey}/cancel`) 후 `payments.status=CANCELED` + **요금제 free 회수**. 멱등(이미 CANCELED면 400). 부분환불·사용자 셀프환불은 백로그. API: `POST /api/admin/payments/<order_id>/cancel {reason}`
+- **환불/취소(관리자)**: `/admin` 결제 목록의 DONE 건 → "취소/환불". API `POST /api/admin/payments/<order_id>/cancel {reason, amount?}`:
+  - **전액**(amount 미지정/잔액 이상): 토스 전체 취소 → `status=CANCELED` + **요금제 free 회수**
+  - **부분환불**(amount < 잔액): 토스 `cancelAmount` 부분취소 → `refunded_amount` 누적(요금제 유지). 잔액 초과는 400
+- **결제수단(카드) 변경**: `POST /api/billing/change-card` → `requestBillingAuth`(successUrl `mode=update`) → `auth-confirm`이 **빌링키만 교체**(청구·플랜·다음청구일 유지, past_due→active). `/?sub=card`
+- **영수증**: 토스 승인/청구 응답의 `receipt.url`을 `payments.receipt_url`에 저장 + 자체 영수증 페이지 `/receipt/<order_id>`(로그인·본인·인쇄, 사업자정보 포함). 설정 "결제 내역"에서 링크
+- **구글 가입 동의**: 구글 OAuth 신규 가입 시 `agreed_terms_at` 기록
 
 ### F-0.12 자동 정기결제 (빌링 / Subscription)
 - **흐름**: 업그레이드 모달 "자동결제" → `POST /api/billing/subscribe`(사용자 고정 customerKey 발급) → 토스 `requestBillingAuth`(카드 등록) → successUrl `GET /api/billing/auth-confirm?customerKey&authKey&plan`
@@ -513,6 +518,8 @@ process_review(item_id, item_type, correct):
 | POST | /api/billing/subscribe | 자동결제 등록 시작(카드 등록창 정보) |
 | GET | /api/billing/auth-confirm | 카드등록 콜백 → 빌링키 발급·첫 청구·활성화 |
 | POST | /api/billing/cancel-subscription | 자동결제 해지 |
+| POST | /api/billing/change-card | 결제수단(빌링키) 변경 시작 |
+| GET | /receipt/:order_id | 결제 영수증(본인) |
 
 ---
 
@@ -542,6 +549,7 @@ process_review(item_id, item_type, correct):
 | v1.16 | 2026-10-16 | 랜딩 페이지 — 공개 마케팅 /welcome(히어로·기능·요금제·CTA), 비로그인 루트 안내, ?signup 탭 전환 |
 | v1.17 | 2026-10-16 | 학습 리마인더 메일 — '오늘 복습 N개' 하루1회 자동 발송(조건부·SMTP 재사용), 원클릭 수신거부, 설정 토글 |
 | v1.18 | 2026-10-16 | 운영 대시보드(MRR) — admin 매출·구독 지표(MRR·활성구독·유료·당월/누적 매출·환불·결제건수) |
+| v1.19 | 2026-10-16 | 결제 후속 — 부분환불(cancelAmount), 카드(빌링키) 변경, 영수증 페이지+토스 receipt, 구글 가입 동의 기록 |
 
 ---
 

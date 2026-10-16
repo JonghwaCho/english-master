@@ -973,6 +973,12 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
       </div>
       <p style="font-size:11px;color:var(--text3);margin-top:8px;">메일 하단의 수신거부 링크로도 언제든 끌 수 있습니다. (운영자가 메일 발송을 설정한 경우에만 전송됩니다.)</p>
     </div>
+
+    <!-- 결제 내역 / 영수증 -->
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">🧾 결제 내역</div>
+      <div id="billing-history" style="margin-top:12px;font-size:13px;color:var(--text3);">불러오는 중...</div>
+    </div>
   </div>
 </div>
 
@@ -5451,6 +5457,26 @@ function selectAIProvider(provider) {
   });
 }
 
+async function loadBillingHistory() {
+  var el = document.getElementById('billing-history');
+  if (!el) return;
+  try {
+    var list = await api('/api/billing/history');
+    if (!list || !list.length) { el.innerHTML = '<span style="color:var(--text3);">결제 내역이 없습니다.</span>'; return; }
+    var statusMap = { DONE: '결제완료', CANCELED: '취소/환불', FAILED: '실패', READY: '진행중' };
+    el.innerHTML = list.map(function (p) {
+      var when = (p.approved_at || p.created_at || '').slice(0, 10);
+      var refunded = (p.refunded_amount || 0) ? ' <span style="color:var(--red,#c0392b);">(-' + p.refunded_amount.toLocaleString() + ' 환불)</span>' : '';
+      var receipt = (p.status === 'DONE' || p.status === 'CANCELED')
+        ? ' · <a href="/receipt/' + encodeURIComponent(p.order_id) + '" target="_blank" style="color:var(--primary);">영수증</a>' : '';
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">' +
+        '<span>' + when + ' · ' + escapeHtmlSafe(p.plan_code) + (p.kind === 'billing' ? ' (자동)' : '') + '</span>' +
+        '<span style="text-align:right;">' + (p.amount || 0).toLocaleString() + '원 · ' + (statusMap[p.status] || p.status) + refunded + receipt + '</span>' +
+        '</div>';
+    }).join('');
+  } catch (e) { el.innerHTML = '<span style="color:var(--text3);">불러오지 못했습니다.</span>'; }
+}
+
 async function loadReminderPref() {
   try {
     var r = await api('/api/me/reminder');
@@ -6423,6 +6449,7 @@ async function refreshPlanBadge() {
 }
 refreshPlanBadge();
 loadReminderPref();
+loadBillingHistory();
 
 // ── 결제(Toss) · 요금제 업그레이드 ──────────────────────
 function loadTossSdk() {
@@ -6476,7 +6503,8 @@ async function openUpgradeModal() {
     subBanner = '<div style="padding:8px 12px;border-radius:10px;background:var(--bg);margin-bottom:10px;font-size:12px;">' +
       '🔄 <b>자동결제 사용 중</b> (' + escapeHtmlSafe(sub.plan_code || '') + ')' +
       (next ? ' · 다음 청구 ' + next : '') + (sub.status === 'past_due' ? ' · <span style="color:var(--amber,#f59e0b);">결제 재시도 중</span>' : '') +
-      ' <button style="margin-left:6px;padding:3px 8px;border:none;border-radius:6px;background:var(--red,#c0392b);color:#fff;cursor:pointer;" onclick="cancelSubscription()">해지</button></div>';
+      ' <button style="margin-left:6px;padding:3px 8px;border:1px solid var(--primary,#3b82f6);border-radius:6px;background:transparent;color:var(--primary,#3b82f6);cursor:pointer;" onclick="startChangeCard()">카드 변경</button>' +
+      ' <button style="margin-left:4px;padding:3px 8px;border:none;border-radius:6px;background:var(--red,#c0392b);color:#fff;cursor:pointer;" onclick="cancelSubscription()">해지</button></div>';
   }
 
   var note = cfg.enabled
@@ -6560,6 +6588,22 @@ async function startSubscribe(planCode) {
   }
 }
 
+async function startChangeCard() {
+  try {
+    var cfg = await fetch('/api/billing/config').then(function (r) { return r.json(); });
+    if (!cfg.enabled) { toast('결제가 아직 준비되지 않았습니다', 'error'); return; }
+    var info = await api('/api/billing/change-card', { method: 'POST', body: {} });
+    if (info.error) { toast(info.error, 'error'); return; }
+    await loadTossSdk();
+    var tp = TossPayments(cfg.client_key);
+    var payment = tp.payment({ customerKey: info.customerKey });
+    await payment.requestBillingAuth({ method: 'CARD', successUrl: info.successUrl, failUrl: info.failUrl });
+  } catch (e) {
+    if (e && (e.code === 'USER_CANCEL' || e.code === 'PAY_PROCESS_CANCELED')) return;
+    toast('카드 변경 오류: ' + (e && e.message ? e.message : e), 'error');
+  }
+}
+
 async function cancelSubscription() {
   if (!confirm('자동결제를 해지할까요?\n(이미 결제한 기간은 그대로 유지되고, 다음 달부터 청구되지 않습니다.)')) return;
   try {
@@ -6595,6 +6639,9 @@ function escapeHtmlSafe(s) {
     if (subq === '1') {
       toast('자동결제가 등록되었습니다! 이번 달 요금제가 적용되었어요.');
       if (typeof refreshPlanBadge === 'function') refreshPlanBadge();
+      history.replaceState({}, '', location.pathname);
+    } else if (subq === 'card') {
+      toast('결제 카드가 변경되었습니다.');
       history.replaceState({}, '', location.pathname);
     } else if (subq === 'fail') {
       toast('자동결제 등록이 취소되었거나 실패했습니다.', 'error');

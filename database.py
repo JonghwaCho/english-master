@@ -317,6 +317,8 @@ def _migrate_billing(conn):
             method      TEXT,
             kind        TEXT DEFAULT 'single',          -- single | billing(자동결제)
             fail_reason TEXT,
+            refunded_amount INTEGER DEFAULT 0,          -- 누적 환불액(부분환불 지원)
+            receipt_url TEXT,                           -- 토스 영수증 URL
             created_at  TEXT DEFAULT (datetime('now')),
             approved_at TEXT,
             canceled_at TEXT
@@ -327,6 +329,8 @@ def _migrate_billing(conn):
     # 기존 payments 테이블(이전 배포)에 신규 컬럼 보강
     _add_col(conn, "payments", "kind", "TEXT DEFAULT 'single'")
     _add_col(conn, "payments", "canceled_at", "TEXT")
+    _add_col(conn, "payments", "refunded_amount", "INTEGER DEFAULT 0")  # 누적 환불액(부분환불)
+    _add_col(conn, "payments", "receipt_url", "TEXT")                    # 토스 영수증 URL
 
     # 기존 DB(이미 plans 테이블이 있던 경우) AI 한도 컬럼 추가 + 알려진 요금제 권장값 backfill
     pcols = [r["name"] for r in conn.execute("PRAGMA table_info(plans)").fetchall()]
@@ -2032,16 +2036,43 @@ def get_payment_order(order_id):
     return dict(row) if row else None
 
 
-def mark_payment_done(order_id, payment_key, method=""):
+def mark_payment_done(order_id, payment_key, method="", receipt_url=None):
     """READY → DONE 로 전이(한 번만). 실제로 전이되면 True(멱등성: 중복 콜백 방지)."""
     conn = get_conn()
     cur = conn.execute(
-        "UPDATE payments SET status='DONE', payment_key=?, method=?, "
+        "UPDATE payments SET status='DONE', payment_key=?, method=?, receipt_url=?, "
         "approved_at=datetime('now') WHERE order_id=? AND status='READY'",
-        (payment_key, method, order_id))
+        (payment_key, method, receipt_url, order_id))
     conn.commit()
     conn.close()
     return cur.rowcount > 0
+
+
+def add_refund(order_id, amount):
+    """부분/전액 환불 기록. 누적 환불액이 결제액 이상이면 CANCELED, 아니면 DONE 유지.
+    반환: (성공?, 전액취소여부, 남은잔액). DONE 결제에만 적용."""
+    conn = get_conn()
+    row = conn.execute("SELECT amount, COALESCE(refunded_amount,0) AS r, status FROM payments WHERE order_id=?",
+                       (order_id,)).fetchone()
+    if not row or row["status"] != "DONE":
+        conn.close()
+        return False, False, 0
+    amount = int(amount)
+    remaining = row["amount"] - row["r"]
+    if amount <= 0 or amount > remaining:
+        conn.close()
+        return False, False, remaining
+    new_refunded = row["r"] + amount
+    full = new_refunded >= row["amount"]
+    if full:
+        conn.execute("UPDATE payments SET refunded_amount=?, status='CANCELED', "
+                     "canceled_at=datetime('now') WHERE order_id=?", (new_refunded, order_id))
+    else:
+        conn.execute("UPDATE payments SET refunded_amount=? WHERE order_id=?",
+                     (new_refunded, order_id))
+    conn.commit()
+    conn.close()
+    return True, full, row["amount"] - new_refunded
 
 
 def mark_payment_failed(order_id, reason=""):
@@ -2126,6 +2157,17 @@ def save_subscription(user_id, plan_code, billing_key, customer_key, next_charge
         "sub_status='active', sub_started_at=datetime('now'), sub_next_charge_at=?, "
         "sub_retry=0 WHERE id=?",
         (billing_key, customer_key, plan_code, next_charge_at, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_billing_key(user_id, billing_key):
+    """결제수단(카드) 변경: 빌링키만 교체(플랜·다음청구일·상태 유지). past_due였다면 active로."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET billing_key=?, sub_retry=0, "
+        "sub_status=CASE WHEN sub_status='past_due' THEN 'active' ELSE sub_status END "
+        "WHERE id=?", (billing_key, user_id))
     conn.commit()
     conn.close()
 

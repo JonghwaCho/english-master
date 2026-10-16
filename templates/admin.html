@@ -446,13 +446,15 @@
       rows.innerHTML = payments.map(function (p) {
         var kind = p.kind === 'billing' ? ' <span style="color:var(--text3);font-size:10px;">(자동)</span>' : '';
         var act = p.status === 'DONE'
-          ? '<button class="btn" style="padding:4px 10px;background:var(--red,#c0392b);" onclick="cancelPayment(this,\'' + esc(p.order_id) + '\')">취소/환불</button>'
+          ? '<button class="btn" style="padding:4px 10px;background:var(--red,#c0392b);" onclick="cancelPayment(this,\'' + esc(p.order_id) + '\',' + (p.amount || 0) + ',' + (p.refunded_amount || 0) + ')">취소/환불</button>'
           : '<span class="muted" style="font-size:11px;">—</span>';
+        var amtCell = (p.amount || 0).toLocaleString() + '원' +
+          ((p.refunded_amount || 0) ? '<br><span style="color:var(--red,#c0392b);font-size:10px;">-' + p.refunded_amount.toLocaleString() + ' 환불</span>' : '');
         return '<tr>' +
           '<td style="font-size:11px;">' + esc((p.order_id || '').slice(0, 14)) + '…</td>' +
           '<td>' + esc(p.email || ('#' + p.user_id)) + '</td>' +
           '<td>' + esc(p.plan_code) + kind + '</td>' +
-          '<td class="num">' + (p.amount || 0).toLocaleString() + '원</td>' +
+          '<td class="num">' + amtCell + '</td>' +
           '<td style="color:' + (statusColor[p.status] || '') + ';font-weight:600;">' + esc(p.status) + '</td>' +
           '<td>' + esc((p.approved_at || p.created_at || '').slice(0, 16)) + '</td>' +
           '<td>' + act + '</td>' +
@@ -460,20 +462,27 @@
       }).join('');
     }
 
-    async function cancelPayment(btn, orderId) {
-      var reason = prompt('취소/환불 사유를 입력하세요(선택):', '고객 요청');
-      if (reason === null) return;  // 취소 안 함
-      if (!confirm('이 결제를 취소(환불)하고 요금제를 회수할까요?\n주문: ' + orderId)) return;
-      btn.disabled = true; var old = btn.textContent; btn.textContent = '취소 중...';
+    async function cancelPayment(btn, orderId, amount, refunded) {
+      var remaining = (amount || 0) - (refunded || 0);
+      var inp = prompt('환불 금액을 입력하세요. (비우면 전액 ' + remaining.toLocaleString() + '원 환불)\n부분 환불은 금액을 입력하세요.', '');
+      if (inp === null) return;  // 취소 안 함
+      var amt = inp.trim() === '' ? null : parseInt(inp.replace(/[^0-9]/g, ''), 10);
+      if (amt !== null && (isNaN(amt) || amt <= 0 || amt > remaining)) { alert('1 ~ ' + remaining.toLocaleString() + '원 사이로 입력하세요.'); return; }
+      var reason = prompt('취소/환불 사유(선택):', '고객 요청');
+      if (reason === null) return;
+      var isFull = (amt === null || amt >= remaining);
+      if (!confirm((isFull ? '전액 환불하고 요금제를 회수합니다.' : (amt.toLocaleString() + '원을 부분 환불합니다(요금제 유지).')) + '\n주문: ' + orderId)) return;
+      btn.disabled = true; var old = btn.textContent; btn.textContent = '처리 중...';
       try {
+        var body = { reason: reason };
+        if (amt !== null) body.amount = amt;
         var res = await fetch('/api/admin/payments/' + encodeURIComponent(orderId) + '/cancel', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: reason }),
+          body: JSON.stringify(body),
         });
         var j = await res.json();
         if (!res.ok || j.error) throw new Error(j.error || '취소 실패');
-        var payments = await fetch('/api/admin/payments').then(function (r) { return r.json(); });
-        renderPayments(payments);
+        renderPayments(await fetch('/api/admin/payments').then(function (r) { return r.json(); }));
         reloadUsers();
       } catch (e) {
         alert(e.message || '취소 실패');

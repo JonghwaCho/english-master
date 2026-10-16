@@ -372,7 +372,9 @@ backdrop-filter: blur(12px)
   - **서버 승인**: `secret_key`로 `POST https://api.tosspayments.com/v1/payments/confirm`(Basic `base64(secretKey:)`). `client_key`만 프론트 노출.
   - **멱등**: `mark_payment_done()`이 `READY→DONE` 단일 전이 → 중복 콜백에도 이중 부여/과금 없음.
 - **설정**: 토스 키는 `app_settings`에 저장(`/admin` 편집, secret 마스킹), env(`TOSS_CLIENT_KEY`/`TOSS_SECRET_KEY`) 시드. `_toss_settings()`가 DB→env 폴백.
-- **환불/취소**: 관리자가 `/admin` 결제 목록의 DONE 건을 취소하면 `_toss_cancel`(`POST /v1/payments/{paymentKey}/cancel`, 전액) 호출 → `payments.status=CANCELED` + `set_user_plan(free)`로 요금제 회수. 멱등(DONE일 때만 전이).
+- **환불/취소**: 관리자 취소 → `_toss_cancel`(`POST /v1/payments/{paymentKey}/cancel`). **전액**이면 `status=CANCELED`+`set_user_plan(free)`, **부분**(cancelAmount)이면 `refunded_amount` 누적·요금제 유지(`add_refund`). 멱등(DONE일 때만).
+- **카드 변경**: `/api/billing/change-card`→`auth-confirm?mode=update`가 빌링키만 교체(`update_billing_key`, 무청구).
+- **영수증**: 승인/청구 응답 `receipt.url`을 `payments.receipt_url`에 저장 + 자체 `/receipt/<order_id>`(본인·인쇄).
 - **자동 정기결제(빌링)**: 카드 등록(`requestBillingAuth`) → `auth-confirm`에서 빌링키 발급(`/v1/billing/authorizations/issue`)·첫 청구(`/v1/billing/{billingKey}`)·구독 active. `_billing_loop`가 매일 예정일 지난 구독을 청구(성공=요금제 연장+다음 청구 +1개월, 실패=past_due +1일 재시도, 3회→canceled). 구독 상태는 users 컬럼(billing_key 등), **빌링키는 비노출**(카드 청구 권한). customerKey 사용자 고정·검증.
 - **남은 것**: 운영 키 교체(사업자 심사)·토스 자동결제 사용 신청, 부분환불·사용자 셀프환불, 결제수단 변경, 영수증.
 

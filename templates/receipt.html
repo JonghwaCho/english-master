@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>영수증 · {{ info.service_name }}</title>
+<style>
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif; background:#f3f4f6; color:#1f2937; margin:0; padding:32px 16px; }
+  .sheet { max-width:520px; margin:0 auto; background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:28px; }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #111827; padding-bottom:14px; margin-bottom:16px; }
+  .head h1 { font-size:20px; margin:0; }
+  .head .svc { color:#6b7280; font-size:13px; margin-top:4px; }
+  .badge { font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px; }
+  .b-done { background:#dcfce7; color:#166534; }
+  .b-cancel { background:#fee2e2; color:#991b1b; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td { padding:8px 4px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+  td.k { color:#6b7280; width:38%; }
+  td.v { text-align:right; font-weight:600; }
+  .total td { border-top:2px solid #111827; border-bottom:none; font-size:16px; padding-top:12px; }
+  .biz { margin-top:18px; color:#6b7280; font-size:12px; line-height:1.7; border-top:1px dashed #e5e7eb; padding-top:12px; }
+  .actions { max-width:520px; margin:14px auto 0; text-align:center; }
+  .btn { display:inline-block; padding:9px 18px; border-radius:9px; text-decoration:none; font-size:14px; border:1px solid #d1d5db; color:#374151; background:#fff; cursor:pointer; }
+  .btn-primary { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+  @media print { body { background:#fff; padding:0; } .actions { display:none; } .sheet { border:none; } }
+</style>
+</head>
+<body>
+  {% set refunded = order.refunded_amount or 0 %}
+  {% set canceled = order.status == 'CANCELED' %}
+  <div class="sheet">
+    <div class="head">
+      <div><h1>결제 영수증</h1><div class="svc">{{ info.service_name }}</div></div>
+      <span class="badge {{ 'b-cancel' if canceled else 'b-done' }}">{{ '취소/환불' if canceled else '결제완료' }}</span>
+    </div>
+    <table>
+      <tr><td class="k">주문번호</td><td class="v" style="font-weight:400;font-size:12px;">{{ order.order_id }}</td></tr>
+      <tr><td class="k">상품</td><td class="v">{{ plan.name or order.plan_code }} 1개월{{ ' (자동결제)' if order.kind == 'billing' else '' }}</td></tr>
+      <tr><td class="k">결제수단</td><td class="v">{{ order.method or '-' }}</td></tr>
+      <tr><td class="k">결제일시</td><td class="v" style="font-weight:400;">{{ (order.approved_at or order.created_at or '')[:19] }} (UTC)</td></tr>
+      <tr><td class="k">구매자</td><td class="v" style="font-weight:400;">{{ email }}</td></tr>
+      {% if refunded %}<tr><td class="k">환불액</td><td class="v" style="color:#b91c1c;">- {{ "{:,}".format(refunded) }}원</td></tr>{% endif %}
+      <tr class="total"><td class="k">결제 금액</td><td class="v">{{ "{:,}".format(order.amount) }}원</td></tr>
+    </table>
+    {% if order.receipt_url %}<p style="margin-top:14px;font-size:13px;"><a href="{{ order.receipt_url }}" target="_blank" style="color:#4f46e5;">토스페이먼츠 발급 영수증 보기 →</a></p>{% endif %}
+    <div class="biz">
+      {% if info.company_name %}{{ info.company_name }}{% if info.ceo_name %} (대표 {{ info.ceo_name }}){% endif %}<br>{% endif %}
+      {% if info.biz_reg_no %}사업자등록번호 {{ info.biz_reg_no }}<br>{% endif %}
+      {% if info.mail_order_no %}통신판매업 신고 {{ info.mail_order_no }}<br>{% endif %}
+      {% if info.address %}{{ info.address }}<br>{% endif %}
+      {% if info.contact_email %}문의 {{ info.contact_email }}{% if info.contact_phone %} / {{ info.contact_phone }}{% endif %}{% endif %}
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" onclick="window.print()">인쇄 / PDF 저장</button>
+    <a class="btn" href="/">← 서비스로</a>
+  </div>
+</body>
+</html>

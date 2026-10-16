@@ -674,6 +674,8 @@ def api_google_callback():
             return redirect("/login?error=create")
         # 구글이 이미 이메일을 검증했으므로 자동 인증 처리
         db.mark_email_verified(user["id"])
+        # 약관 동의 기록(로그인 화면에 약관/개인정보 동의 고지를 표시 → 가입 시 동의로 간주)
+        db.set_user_agreed_terms(user["id"])
         # 첫 가입자는 기존 데이터 인수
         if db.count_users() == 1:
             db.claim_orphan_data(user["id"])
@@ -1052,9 +1054,19 @@ def api_admin_cancel_payment(order_id):
         return jsonify({"error": "존재하지 않는 결제입니다"}), 404
     if order["status"] != "DONE" or not order["payment_key"]:
         return jsonify({"error": "취소 가능한 상태(DONE)가 아닙니다"}), 400
-    reason = ((request.json or {}).get("reason") or "").strip() or "운영자 취소/환불"
+    data = request.json or {}
+    reason = (data.get("reason") or "").strip() or "운영자 취소/환불"
+    remaining = int(order["amount"]) - int(order.get("refunded_amount") or 0)
+    # 금액 미지정 또는 잔액 이상 = 전액 취소, 그 외 = 부분취소
+    req_amount = data.get("amount")
+    partial = req_amount is not None and 0 < int(req_amount) < remaining
+    cancel_amount = int(req_amount) if partial else None
+    if req_amount is not None and int(req_amount) <= 0:
+        return jsonify({"error": "환불 금액은 1 이상이어야 합니다"}), 400
+    if req_amount is not None and int(req_amount) > remaining:
+        return jsonify({"error": f"환불 가능 잔액({remaining:,}원)을 초과했습니다"}), 400
     try:
-        _toss_cancel(order["payment_key"], reason)
+        _toss_cancel(order["payment_key"], reason, cancel_amount)
     except urllib.error.HTTPError as e:
         detail = ""
         try:
@@ -1066,9 +1078,10 @@ def api_admin_cancel_payment(order_id):
     except Exception as e:
         logging.warning(f"[Billing] cancel error: {e}")
         return jsonify({"error": "토스 취소 호출 실패"}), 500
-    db.mark_payment_canceled(order_id, reason)
-    db.set_user_plan(order["user_id"], "free")   # 요금제 회수
-    return jsonify({"ok": True})
+    ok, full, left = db.add_refund(order_id, cancel_amount if partial else remaining)
+    if full:
+        db.set_user_plan(order["user_id"], "free")   # 전액 환불 시 요금제 회수
+    return jsonify({"ok": True, "full": full, "remaining": left})
 
 
 # ── API: Admin - 이메일(SMTP) 설정 ─────────────────────
@@ -1175,11 +1188,14 @@ def _toss_confirm(payment_key, order_id, amount):
         return json_lib.loads(resp.read().decode())
 
 
-def _toss_cancel(payment_key, reason):
-    """결제 전체 취소(환불). 성공 시 Payment 객체(dict). cancelAmount 미지정=전액."""
+def _toss_cancel(payment_key, reason, cancel_amount=None):
+    """결제 취소/환불. cancel_amount 지정 시 부분취소, 미지정 시 전액. 성공 시 Payment(dict)."""
     secret = _toss_settings()["secret_key"]
     token = base64.b64encode((secret + ":").encode()).decode()
-    body = json_lib.dumps({"cancelReason": reason or "운영자 취소"}).encode()
+    payload = {"cancelReason": reason or "운영자 취소"}
+    if cancel_amount is not None:
+        payload["cancelAmount"] = int(cancel_amount)
+    body = json_lib.dumps(payload).encode()
     req = urllib.request.Request(
         TOSS_API_BASE + f"/v1/payments/{payment_key}/cancel", data=body, method="POST",
         headers={"Authorization": "Basic " + token, "Content-Type": "application/json"})
@@ -1238,7 +1254,8 @@ def _billing_charge_once(user, plan, billing_key, customer_key):
         db.mark_payment_failed(order_id, "billing_error")
         return False, str(e)
     if result.get("status") == "DONE":
-        db.mark_payment_done(order_id, result.get("paymentKey", ""), result.get("method", ""))
+        db.mark_payment_done(order_id, result.get("paymentKey", ""), result.get("method", ""),
+                             (result.get("receipt") or {}).get("url"))
         db.set_user_plan(user["id"], plan["code"])
         return True, "ok"
     db.mark_payment_failed(order_id, f"billing_status_{result.get('status')}")
@@ -1418,7 +1435,8 @@ def api_billing_confirm():
         return redirect("/?paid=fail&reason=confirm")
     # 5) 승인 결과 반영
     if result.get("status") == "DONE":
-        if db.mark_payment_done(order_id, payment_key, result.get("method", "")):
+        if db.mark_payment_done(order_id, payment_key, result.get("method", ""),
+                                (result.get("receipt") or {}).get("url")):
             db.set_user_plan(u["id"], order["plan_code"])  # 1개월 부여(월주기 = 구매 시점 기준)
         return redirect(f"/?paid=1&plan={order['plan_code']}")
     db.mark_payment_failed(order_id, f"status_{result.get('status')}")
@@ -1441,6 +1459,20 @@ def api_billing_history():
     if not u:
         return jsonify({"error": "unauthorized"}), 401
     return jsonify(db.list_payments(user_id=u["id"], limit=50))
+
+
+@app.route("/receipt/<order_id>")
+def page_receipt(order_id):
+    """결제 영수증(로그인·본인 결제만). 인쇄 가능."""
+    u = current_user()
+    if not u:
+        return redirect("/login")
+    order = db.get_payment_order(order_id)
+    if not order or order["user_id"] != u["id"]:
+        abort(404)
+    plan = db.get_plan(order["plan_code"]) or {}
+    return render_template("receipt.html", order=order, plan=plan,
+                           info=db.get_legal_settings(), email=u.get("email", ""))
 
 
 @app.route("/api/billing/subscription")
@@ -1477,21 +1509,64 @@ def api_billing_subscribe():
     })
 
 
+@app.route("/api/billing/change-card", methods=["POST"])
+def api_billing_change_card():
+    """결제수단(카드) 변경 시작: 기존 구독의 빌링키를 교체하기 위한 카드 등록창 정보."""
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    s = _toss_settings()
+    if not _toss_ready(s):
+        return jsonify({"error": "결제가 아직 설정되지 않았습니다."}), 400
+    sub = db.get_subscription(u["id"])
+    if not sub or not sub.get("plan_code"):
+        return jsonify({"error": "변경할 자동결제 구독이 없습니다."}), 400
+    customer_key = db.get_or_create_billing_customer_key(u["id"])
+    base = request.host_url.rstrip("/")
+    return jsonify({
+        "clientKey": s["client_key"],
+        "customerKey": customer_key,
+        "successUrl": base + "/api/billing/auth-confirm?mode=update",
+        "failUrl": base + "/api/billing/fail",
+    })
+
+
 @app.route("/api/billing/auth-confirm")
 def api_billing_auth_confirm():
-    """토스 카드등록 successUrl 콜백: 빌링키 발급 → 첫 달 청구 → 구독 활성화."""
+    """토스 카드등록 successUrl 콜백.
+    - 기본(신규 구독): 빌링키 발급 → 첫 달 청구 → 구독 활성화
+    - mode=update(카드 변경): 빌링키만 교체(청구 없음), 기존 구독 유지"""
     u = current_user()
     if not u:
         return redirect("/login")
     customer_key = request.args.get("customerKey", "")
     auth_key = request.args.get("authKey", "")
+    mode = request.args.get("mode", "")
+    expected_ck = db.get_or_create_billing_customer_key(u["id"])
+    if customer_key != expected_ck or not auth_key:
+        return redirect("/?sub=fail&reason=auth")
+
+    # 카드 변경 모드: 빌링키만 교체
+    if mode == "update":
+        sub = db.get_subscription(u["id"])
+        if not sub or not sub.get("plan_code"):
+            return redirect("/?sub=fail&reason=nosub")
+        try:
+            issued = _toss_issue_billing_key(auth_key, customer_key)
+        except Exception as e:
+            logging.warning(f"[Billing] issue key(update) error: {e}")
+            return redirect("/?sub=fail&reason=issue")
+        billing_key = issued.get("billingKey")
+        if not billing_key:
+            return redirect("/?sub=fail&reason=issue")
+        db.update_billing_key(u["id"], billing_key)
+        return redirect("/?sub=card")
+
+    # 신규 구독 모드
     plan_code = request.args.get("plan", "")
     plan = db.get_plan(plan_code)
-    # customerKey는 이 사용자의 고정값과 일치해야 한다(불일치 차단)
-    expected_ck = db.get_or_create_billing_customer_key(u["id"])
-    if not plan or int(plan["price"]) <= 0 or customer_key != expected_ck or not auth_key:
+    if not plan or int(plan["price"]) <= 0:
         return redirect("/?sub=fail&reason=auth")
-    # 1) 빌링키 발급
     try:
         issued = _toss_issue_billing_key(auth_key, customer_key)
     except Exception as e:
@@ -1500,12 +1575,10 @@ def api_billing_auth_confirm():
     billing_key = issued.get("billingKey")
     if not billing_key:
         return redirect("/?sub=fail&reason=issue")
-    # 2) 첫 달 즉시 청구
     ok, msg = _billing_charge_once(u, plan, billing_key, customer_key)
     if not ok:
         logging.warning(f"[Billing] first charge failed user {u['id']}: {msg}")
         return redirect("/?sub=fail&reason=charge")
-    # 3) 구독 저장(active) + 다음 청구일 = +1개월
     db.save_subscription(u["id"], plan_code, billing_key, customer_key, db.next_charge_time_utc())
     return redirect(f"/?sub=1&plan={plan_code}")
 
