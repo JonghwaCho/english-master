@@ -86,6 +86,12 @@
       <div class="loading">불러오는 중...</div>
     </div>
 
+    <div class="section-title">💰 매출 · 구독</div>
+    <div class="cards" id="revenue-cards" style="margin-bottom:8px;">
+      <div class="loading">불러오는 중...</div>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:24px;">MRR은 활성 자동결제 구독의 월 요금 합계입니다. 매출은 성공(DONE) 결제 기준이며, 환불(CANCELED)은 별도 표시됩니다.</p>
+
     <div class="section-title">요금제 관리</div>
     <div class="plans-grid" id="plans-grid">
       <div class="loading">불러오는 중...</div>
@@ -571,6 +577,8 @@
              '<div class="value' + (accent ? ' accent' : '') + '">' + value + '</div></div>';
     }
 
+    function won(n) { return (n || 0).toLocaleString() + '원'; }
+
     function renderStats(s) {
       document.getElementById('stat-cards').innerHTML =
         card('전체 사용자', s.total_users) +
@@ -581,6 +589,18 @@
         card('총 영상', s.total_videos) +
         card('총 문장', s.total_sentences) +
         card('총 복습', s.total_reviews);
+
+      var rev = document.getElementById('revenue-cards');
+      if (rev) {
+        rev.innerHTML =
+          card('MRR (월 반복 매출)', won(s.mrr), true) +
+          card('활성 구독', s.active_subscriptions) +
+          card('유료 사용자', s.paid_users) +
+          card('이번 달 매출', won(s.revenue_month), true) +
+          card('이번 달 환불', won(s.refunds_month)) +
+          card('누적 매출', won(s.revenue_total)) +
+          card('결제 건수', s.payments_done);
+      }
     }
 
     function planSelect(u) {

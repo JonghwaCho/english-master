@@ -1505,6 +1505,18 @@ def admin_global_stats():
         "total_reviews": one("SELECT COUNT(*) FROM reviews"),
         "new_users_7d": one("SELECT COUNT(*) FROM users WHERE created_at >= datetime('now','-7 days')"),
         "active_users_7d": one("SELECT COUNT(DISTINCT user_id) FROM study_log WHERE created_at >= datetime('now','-7 days')"),
+        # ── 매출·구독 지표(운영 대시보드) ──
+        "paid_users": one("SELECT COUNT(*) FROM users WHERE COALESCE(plan_code,'free') != 'free'"),
+        "active_subscriptions": one("SELECT COUNT(*) FROM users WHERE sub_status='active'"),
+        # MRR = 활성 자동결제 구독의 월 요금 합계
+        "mrr": one("SELECT COALESCE(SUM(p.price),0) FROM users u "
+                   "JOIN plans p ON p.code=u.sub_plan_code WHERE u.sub_status='active'"),
+        "revenue_month": one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='DONE' "
+                             "AND strftime('%Y-%m',COALESCE(approved_at,created_at))=strftime('%Y-%m','now')"),
+        "revenue_total": one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='DONE'"),
+        "refunds_month": one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='CANCELED' "
+                             "AND strftime('%Y-%m',COALESCE(canceled_at,created_at))=strftime('%Y-%m','now')"),
+        "payments_done": one("SELECT COUNT(*) FROM payments WHERE status='DONE'"),
     }
     conn.close()
     return stats
