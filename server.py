@@ -1270,6 +1270,73 @@ def _billing_loop():
         time.sleep(3600)
 
 
+def _app_base_url():
+    """메일 링크용 절대 URL. 환경변수 APP_BASE_URL 우선(백그라운드엔 요청 컨텍스트 없음)."""
+    return (os.environ.get("APP_BASE_URL") or "https://english-master.fly.dev").rstrip("/")
+
+
+def _reminder_loop():
+    """매일 지정 시각(UTC)에 '오늘 복습할 N개' 리마인더 메일을 보낸다.
+    1시간마다 깨어나 목표 시각이면 발송(사용자별 하루 1회, 수신거부/미인증 제외)."""
+    target_hour = int(os.environ.get("REMINDER_HOUR_UTC", "0"))  # 기본 0시 UTC = 9시 KST
+    base = _app_base_url()
+    while True:
+        try:
+            if datetime.utcnow().hour == target_hour:
+                settings = db.get_email_settings()
+                if settings.get("enabled") and settings.get("smtp_host"):
+                    today = datetime.utcnow().strftime("%Y-%m-%d")
+                    sent = 0
+                    for u in db.users_due_for_reminder(today):
+                        tok = db.get_or_create_unsub_token(u["id"])
+                        subject, text, html = email_service.reminder_email_bodies(
+                            u["due"], base + "/", base + "/unsubscribe?token=" + tok)
+                        ok, err = email_service.send_email(settings, u["email"], subject, text, html)
+                        if ok:
+                            db.mark_reminder_sent(u["id"], today)
+                            sent += 1
+                        else:
+                            logging.warning(f"[Reminder] send failed to {u['email']}: {err}")
+                    if sent:
+                        logging.info(f"[Reminder] sent {sent} reminder emails")
+        except Exception as e:
+            logging.warning(f"[Reminder] loop error: {e}")
+        time.sleep(3600)
+
+
+@app.route("/unsubscribe")
+def page_unsubscribe():
+    """원클릭 수신거부(공개). 토큰으로 리마인더 OFF."""
+    ok = db.unsubscribe_by_token(request.args.get("token", ""))
+    msg = ("학습 리마인더 메일 수신을 거부했습니다. 설정에서 언제든 다시 켤 수 있어요."
+           if ok else "이미 처리되었거나 잘못된 링크입니다.")
+    return (f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>수신거부</title></head>
+<body style="font-family:-apple-system,sans-serif;background:#f7f8fa;color:#1f2430;text-align:center;padding:64px 20px;">
+<div style="max-width:420px;margin:0 auto;background:#fff;border:1px solid #e6e8ec;border-radius:14px;padding:28px;">
+<h2 style="margin:0 0 10px;">{'✅ 수신거부 완료' if ok else '안내'}</h2>
+<p style="color:#555;line-height:1.7;">{msg}</p>
+<a href="/" style="display:inline-block;margin-top:14px;color:#3b82f6;text-decoration:none;">← 서비스로</a>
+</div></body></html>""")
+
+
+@app.route("/api/me/reminder", methods=["GET"])
+def api_get_reminder():
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"enabled": db.get_reminder_pref(u["id"])})
+
+
+@app.route("/api/me/reminder", methods=["POST"])
+def api_set_reminder():
+    u = current_user()
+    if not u:
+        return jsonify({"error": "unauthorized"}), 401
+    db.set_reminder_pref(u["id"], bool((request.json or {}).get("enabled", True)))
+    return jsonify({"ok": True, "enabled": db.get_reminder_pref(u["id"])})
+
+
 @app.route("/api/billing/config")
 def api_billing_config():
     """프론트 결제창 초기화용. client_key는 공개값이므로 노출 가능(secret은 절대 노출 안 함)."""
@@ -2802,6 +2869,9 @@ def init_app():
     # 자동 정기결제(빌링) 청구 스레드 (다중 워커 환경에서는 한 워커만 ENABLE_BILLING=1로 두기)
     if os.environ.get("ENABLE_BILLING", "1") == "1":
         threading.Thread(target=_billing_loop, daemon=True).start()
+    # 학습 리마인더 메일 스레드 (다중 워커 환경에서는 한 워커만 ENABLE_REMINDER=1로 두기)
+    if os.environ.get("ENABLE_REMINDER", "1") == "1":
+        threading.Thread(target=_reminder_loop, daemon=True).start()
 
 
 init_app()

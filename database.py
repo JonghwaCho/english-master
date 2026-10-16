@@ -388,6 +388,11 @@ def _migrate_email(conn):
     # 약관 동의 시각(가입 시 기록). 기존 사용자는 NULL(가입 당시 약관 없던 때)
     _add_col(conn, "users", "agreed_terms_at", "TEXT")
 
+    # 학습 리마인더 메일(기본 ON, 원클릭 수신거부 토큰)
+    _add_col(conn, "users", "reminder_enabled", "INTEGER DEFAULT 1")
+    _add_col(conn, "users", "reminder_sent_on", "TEXT")   # 마지막 발송 날짜(UTC, 중복 방지)
+    _add_col(conn, "users", "unsub_token", "TEXT")
+
     # 자동 정기결제(빌링) 구독 상태
     _add_col(conn, "users", "billing_key", "TEXT")            # 토스 빌링키(카드 청구 권한 — 민감)
     _add_col(conn, "users", "billing_customer_key", "TEXT")   # 사용자별 고정 customerKey
@@ -2207,6 +2212,82 @@ def set_user_agreed_terms(user_id):
     """가입 시 약관 동의 시각 기록."""
     conn = get_conn()
     conn.execute("UPDATE users SET agreed_terms_at=datetime('now') WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+# ── 학습 리마인더 메일 ──────────────────────────────────
+
+def count_due_reviews(user_id):
+    """해당 사용자의 '지금 복습할' 항목 수(문장+단어, next_review<=now, level<7)."""
+    now = datetime.now().isoformat()
+    conn = get_conn()
+    n = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE user_id=? AND next_review <= ? AND level < 7",
+        (user_id, now)).fetchone()[0]
+    conn.close()
+    return n
+
+
+def get_reminder_pref(user_id):
+    conn = get_conn()
+    r = conn.execute("SELECT COALESCE(reminder_enabled,1) AS e FROM users WHERE id=?",
+                     (user_id,)).fetchone()
+    conn.close()
+    return bool(r and r["e"])
+
+
+def set_reminder_pref(user_id, enabled):
+    conn = get_conn()
+    conn.execute("UPDATE users SET reminder_enabled=? WHERE id=?",
+                 (1 if enabled else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_or_create_unsub_token(user_id):
+    conn = get_conn()
+    r = conn.execute("SELECT unsub_token FROM users WHERE id=?", (user_id,)).fetchone()
+    tok = (r["unsub_token"] if r else None) or ""
+    if not tok:
+        tok = uuid.uuid4().hex
+        conn.execute("UPDATE users SET unsub_token=? WHERE id=?", (tok, user_id))
+        conn.commit()
+    conn.close()
+    return tok
+
+
+def unsubscribe_by_token(token):
+    """수신거부 토큰으로 리마인더 OFF. 성공 시 True."""
+    if not token:
+        return False
+    conn = get_conn()
+    cur = conn.execute("UPDATE users SET reminder_enabled=0 WHERE unsub_token=?", (token,))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def users_due_for_reminder(today_utc):
+    """오늘 리마인더를 보낼 대상자 목록. (수신ON·인증완료·미정지·이메일 있음·오늘 미발송
+    + 복습할 항목 1개 이상). 각 항목: id, email, name, due(수)."""
+    now = datetime.now().isoformat()
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT u.id, u.email, u.name, "
+        "  (SELECT COUNT(*) FROM reviews r WHERE r.user_id=u.id AND r.next_review<=? AND r.level<7) AS due "
+        "FROM users u "
+        "WHERE COALESCE(u.reminder_enabled,1)=1 AND COALESCE(u.suspended,0)=0 "
+        "  AND COALESCE(u.email_verified,0)=1 AND u.email IS NOT NULL AND u.email != '' "
+        "  AND COALESCE(u.reminder_sent_on,'') != ?",
+        (now, today_utc)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows if r["due"] and r["due"] > 0]
+
+
+def mark_reminder_sent(user_id, day_utc):
+    conn = get_conn()
+    conn.execute("UPDATE users SET reminder_sent_on=? WHERE id=?", (day_utc, user_id))
     conn.commit()
     conn.close()
 

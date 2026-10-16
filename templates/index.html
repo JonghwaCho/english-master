@@ -960,6 +960,19 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
         </div>
       </div>
     </div>
+
+    <!-- 학습 리마인더 메일 -->
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">⏰ 학습 리마인더 메일</div>
+      <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="font-size:14px;color:var(--text2);">복습할 항목이 있을 때 하루 한 번 이메일로 알려드려요.</div>
+        <label style="display:inline-flex;align-items:center;cursor:pointer;">
+          <input type="checkbox" id="reminder-toggle" onchange="saveReminderPref(this.checked)" style="width:18px;height:18px;cursor:pointer;">
+          <span id="reminder-state" style="margin-left:8px;font-size:13px;color:var(--text3);"></span>
+        </label>
+      </div>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">메일 하단의 수신거부 링크로도 언제든 끌 수 있습니다. (운영자가 메일 발송을 설정한 경우에만 전송됩니다.)</p>
+    </div>
   </div>
 </div>
 
@@ -5438,6 +5451,25 @@ function selectAIProvider(provider) {
   });
 }
 
+async function loadReminderPref() {
+  try {
+    var r = await api('/api/me/reminder');
+    var box = document.getElementById('reminder-toggle');
+    var st = document.getElementById('reminder-state');
+    if (box) box.checked = !!r.enabled;
+    if (st) st.textContent = r.enabled ? '켜짐' : '꺼짐';
+  } catch (e) {}
+}
+
+async function saveReminderPref(enabled) {
+  var st = document.getElementById('reminder-state');
+  try {
+    var r = await api('/api/me/reminder', { method: 'POST', body: { enabled: enabled } });
+    if (st) st.textContent = r.enabled ? '켜짐' : '꺼짐';
+    toast(enabled ? '학습 리마인더 메일을 켰습니다.' : '학습 리마인더 메일을 껐습니다.');
+  } catch (e) { toast('설정 저장 실패', 'error'); }
+}
+
 async function loadAISettings() {
   try {
     const s = await api('/api/ai/settings');
@@ -6390,6 +6422,7 @@ async function refreshPlanBadge() {
   } catch (e) {}
 }
 refreshPlanBadge();
+loadReminderPref();
 
 // ── 결제(Toss) · 요금제 업그레이드 ──────────────────────
 function loadTossSdk() {

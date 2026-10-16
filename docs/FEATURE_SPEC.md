@@ -63,6 +63,13 @@
 - **API**: `POST /api/billing/subscribe`, `GET /api/billing/auth-confirm`, `POST /api/billing/cancel-subscription`, `GET /api/billing/subscription`
 - **운영**: 토스 **자동결제(빌링) 사용 신청** + 운영 키 필요. 단건 결제와 **병행** 제공
 
+### F-0.15 학습 리마인더 메일 (리텐션)
+- **발송**: `_reminder_loop`(매일 `REMINDER_HOUR_UTC` 시각, 기본 0시=9시 KST)가 **복습할 항목이 있는** 사용자에게 "오늘 복습할 N개" 메일 1통. 사용자별 하루 1회(`reminder_sent_on`). 미인증·정지·수신거부·due 0 제외. SMTP 미설정 시 미발송
+- **수신거부**: 메일 하단 원클릭 `/unsubscribe?token=`(공개) + 앱 설정 토글(`/api/me/reminder` GET/POST). 기본 ON
+- **users 컬럼**: `reminder_enabled`(기본1), `reminder_sent_on`, `unsub_token`
+- **env**: `APP_BASE_URL`(메일 절대 링크), `REMINDER_HOUR_UTC`(기본 0), `ENABLE_REMINDER`(기본 1)
+- **구현**: `count_due_reviews`/`users_due_for_reminder`/`mark_reminder_sent`/`unsubscribe_by_token`, `email_service.reminder_email_bodies`
+
 ### F-0.14 랜딩 페이지 (공개 마케팅 입구)
 - **공개 랜딩** `/welcome`(로그인 불필요): 히어로(서비스 소개) + 주요 기능 + **요금제(plans 동적 렌더)** + CTA("무료로 시작"→`/login?signup=1`, "로그인"→`/login`) + 법적 푸터
 - **루트 안내**: 비로그인 사용자가 `/`에 오면 `/welcome`으로 리다이렉트(로그인 사용자는 앱). `/welcome`은 로그인 사용자가 오면 `/`로.
@@ -528,6 +535,7 @@ process_review(item_id, item_type, correct):
 | v1.14 | 2026-10-15 | 자동 정기결제(빌링) — 카드등록→빌링키→첫 청구→매월 자동 청구·갱신(스케줄러), 실패 3회 해지, 사용자 해지, 빌링키 비노출, 단건과 병행 |
 | v1.15 | 2026-10-16 | 결제 법적 고지 — 약관/개인정보/환불 공개 페이지(표준 템플릿+법률검토 배너), 사업자정보 운영자 편집, 가입 동의 필수·기록, 결제 전 고지, 푸터 링크 |
 | v1.16 | 2026-10-16 | 랜딩 페이지 — 공개 마케팅 /welcome(히어로·기능·요금제·CTA), 비로그인 루트 안내, ?signup 탭 전환 |
+| v1.17 | 2026-10-16 | 학습 리마인더 메일 — '오늘 복습 N개' 하루1회 자동 발송(조건부·SMTP 재사용), 원클릭 수신거부, 설정 토글 |
 
 ---
 

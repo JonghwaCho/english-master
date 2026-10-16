@@ -83,6 +83,29 @@ def verification_email_bodies(link, app_name="English Master"):
     return subject, text, html
 
 
+def reminder_email_bodies(count, app_url, unsub_url, app_name="English Master"):
+    """학습 리마인더 메일의 (제목, 텍스트본문, HTML본문)을 만든다."""
+    subject = f"[{app_name}] 오늘 복습할 {count}개가 기다리고 있어요"
+    text = (
+        f"{app_name} 학습 리마인더\n\n"
+        f"오늘 복습할 항목이 {count}개 있습니다. 잊기 전에 잠깐 복습해볼까요?\n"
+        f"{app_url}\n\n"
+        f"리마인더를 받고 싶지 않으면 아래 링크를 누르세요(수신거부):\n{unsub_url}"
+    )
+    html = f"""\
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b;">
+  <h2 style="margin:0 0 8px;">⏰ 오늘 복습할 {count}개</h2>
+  <p style="color:#475569;line-height:1.6;">잊을 때쯤이 복습하기 가장 좋은 때예요. 잠깐이면 충분합니다!</p>
+  <p style="margin:24px 0;">
+    <a href="{app_url}" style="display:inline-block;background:#6366f1;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;">지금 복습하기</a>
+  </p>
+  <p style="color:#94a3b8;font-size:12px;margin-top:28px;line-height:1.6;">
+    리마인더를 받고 싶지 않으면 <a href="{unsub_url}" style="color:#94a3b8;">여기를 눌러 수신거부</a>하세요.
+  </p>
+</div>"""
+    return subject, text, html
+
+
 def password_reset_email_bodies(link, app_name="English Master"):
     """비밀번호 재설정 메일의 (제목, 텍스트본문, HTML본문)을 만든다."""
     subject = f"[{app_name}] 비밀번호 재설정 안내"

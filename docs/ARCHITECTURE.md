@@ -185,6 +185,7 @@ Level 7 <──[30d]── Level 6 <──[15d]── Level 5 <──[7d]── 
 | sync_thread | (timer) | 플레이리스트 30분 주기 자동 동기화 |
 | backup_loop | (timer) | 매일 1회 DB 자동 백업(1시간마다 '오늘 미백업 시' 생성, `ENABLE_BACKUP`) |
 | billing_loop | (timer) | 자동결제 구독의 예정일 지난 건을 매일 청구·갱신(`ENABLE_BILLING`) |
+| reminder_loop | (timer) | 매일 지정시각(`REMINDER_HOUR_UTC`) 복습할 항목 있는 사용자에 리마인더 메일(`ENABLE_REMINDER`) |
 
 ## 7. 프론트엔드 설계
 
