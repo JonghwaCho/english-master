@@ -559,6 +559,10 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
           <button class="btn btn-red" onclick="studyMark('unknown')">모르겠어요</button>
           <button class="btn btn-green" onclick="studyMark('known')">알아요!</button>
         </div>
+        <div id="study-shortcut-hint" style="text-align:center; font-size:12px; color:var(--text3); margin-top:10px;"></div>
+        <div style="text-align:center; margin-top:4px;">
+          <button class="btn btn-outline btn-sm" onclick="openButtonGuide()" style="font-size:12px; padding:4px 12px;">❓ 버튼 안내</button>
+        </div>
         <!-- AI 도구 버튼 -->
         <div class="ai-tools" style="margin-top:16px; display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
           <button class="btn btn-outline btn-sm" onclick="aiAction('literal')" title="직독직해">📋 직독직해</button>
@@ -611,7 +615,10 @@ kbd { display:inline-block; padding:1px 6px; font-size:11px; font-family:inherit
           <button class="toggle-btn" onclick="toggleEmojiFilter()" id="emoji-filter-btn" style="flex:1;padding:8px 0;border-radius:0;text-align:center;justify-content:center;">이모지 OFF</button>
           <button class="btn btn-red btn-sm" onclick="endFullPlay()" style="flex:1;padding:8px 0;text-align:center;display:inline-flex;align-items:center;justify-content:center;border-radius:0 6px 6px 0;">종료</button>
         </div>
-        <div style="font-size:12px; color:var(--text3); margin-top:8px;">R=모르는문장 | Y=아는문장 | Space=일시정지</div>
+        <div style="font-size:12px; color:var(--text3); margin-top:8px;">
+          <span id="fullplay-shortcut-hint">R=모르는문장 | Y=아는문장 | Space=일시정지</span>
+          <button class="btn btn-outline btn-sm" onclick="openButtonGuide()" style="font-size:11px; padding:2px 10px; margin-left:8px;">❓ 버튼 안내</button>
+        </div>
         <div class="word-flash-box" id="word-flash-box" style="display:none;cursor:pointer;max-width:480px;margin:0 auto;" onclick="saveWordFlashWords()" title="클릭하면 이 단어 + 앞뒤 단어를 모르는 단어에 저장">
           <div class="word-flash-label">Word Flash</div>
           <div class="word-flash-word" id="word-flash-word">-</div>
@@ -5391,6 +5398,62 @@ function loadShortcutSettings() {
   document.querySelectorAll('input[name="fullplay-reset"]').forEach(function(r) {
     r.checked = (r.value === 'on') === fullplayResetUnknown;
   });
+  renderShortcutHints();
+}
+
+// 화면의 단축키 힌트를 현재 설정값으로 갱신(설정 변경 시 자동 반영)
+function renderShortcutHints() {
+  var sk = shortcutKeys.study, fk = shortcutKeys.fullplay;
+  var sEl = document.getElementById('study-shortcut-hint');
+  if (sEl) sEl.innerHTML =
+    '🔴 모르겠어요 <b>' + getKeyLabel(sk.unknown) + '</b> · ' +
+    '🟢 알아요 <b>' + getKeyLabel(sk.known) + '</b> · ' +
+    '🔁 다시듣기 <b>' + getKeyLabel(sk.replay) + '</b>';
+  var fEl = document.getElementById('fullplay-shortcut-hint');
+  if (fEl) fEl.textContent =
+    '모르는문장 ' + getKeyLabel(fk.unknown) + ' | 아는문장 ' + getKeyLabel(fk.known) +
+    ' | 일시정지 ' + getKeyLabel(fk.pause);
+}
+
+// 버튼 안내(가이드) 모달 — 현재 단축키를 반영해 표시
+function openButtonGuide() {
+  var sk = shortcutKeys.study, fk = shortcutKeys.fullplay;
+  function kbd(k) {
+    return '<kbd style="display:inline-block;min-width:20px;text-align:center;padding:1px 7px;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;background:var(--bg);font-size:12px;font-weight:700;">' + getKeyLabel(k) + '</kbd>';
+  }
+  function row(ic, name, keyHtml, desc) {
+    return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">' +
+      '<div style="width:92px;flex-shrink:0;font-weight:600;">' + ic + ' ' + name + '</div>' +
+      '<div style="width:52px;flex-shrink:0;">' + (keyHtml || '') + '</div>' +
+      '<div style="flex:1;color:var(--text2);font-size:13px;">' + desc + '</div></div>';
+  }
+  var html =
+    '<div style="background:var(--bg2,#1c1f26);color:var(--text);max-width:460px;width:100%;border-radius:14px;padding:20px;max-height:85vh;overflow:auto;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<h3 style="margin:0;font-size:17px;">❓ 버튼 · 단축키 안내</h3>' +
+        '<button onclick="document.getElementById(\'btn-guide-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);">✕</button></div>' +
+      '<div style="font-weight:700;font-size:13px;color:var(--text3);margin:6px 0 2px;">문장별 학습</div>' +
+      row('🔴', '모르겠어요', kbd(sk.unknown), "이 문장을 <b>모르는 문장</b>으로 저장하고 복습 목록(SRS)에 추가합니다.") +
+      row('🟢', '알아요!', kbd(sk.known), "이 문장을 <b>아는 문장</b>으로 표시하고 다음으로 넘어갑니다.") +
+      row('🔁', '다시 듣기', kbd(sk.replay), "현재 문장의 음성을 다시 들려줍니다.") +
+      row('🤖', 'AI 도구', '', "📋 직독직해 · 🔄 유사문장 · 📖 문법설명 · 🔤 단어설명") +
+      row('🚪', '학습 종료', '', "학습을 끝내고 목록으로 돌아갑니다.") +
+      '<div style="font-weight:700;font-size:13px;color:var(--text3);margin:14px 0 2px;">전체학습(전체 재생)</div>' +
+      row('⏯', '일시정지/재생', kbd(fk.pause), "재생을 멈추거나 다시 시작합니다.") +
+      row('🔴', '모르는 문장', kbd(fk.unknown), "재생 중 현재 문장을 모르는 문장으로 저장하고 다시 들려줍니다.") +
+      row('🟢', '아는 문장', kbd(fk.known), "현재 문장을 아는 문장으로 표시합니다.") +
+      row('🔤', '해석/단어/이모지', '', "해석 표시, 단어 플래시(Word Flash), 이모지 필터를 각각 켜고 끕니다.") +
+      '<div style="margin-top:12px;font-size:12px;color:var(--text3);">💡 단축키는 <b>설정 → 단축키</b>에서 원하는 키로 바꿀 수 있어요.</div>' +
+    '</div>';
+  var wrap = document.getElementById('btn-guide-modal');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'btn-guide-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+    document.body.appendChild(wrap);
+  }
+  wrap.innerHTML = html;
 }
 
 function captureKey(inputEl, mode, action) {
@@ -5406,6 +5469,7 @@ function captureKey(inputEl, mode, action) {
     inputEl.style.borderColor = 'var(--border)';
     localStorage.setItem('shortcutKeys', JSON.stringify(shortcutKeys));
     inputEl.removeEventListener('keydown', handler);
+    if (typeof renderShortcutHints === 'function') renderShortcutHints();
     toast(getKeyLabel(key) + ' 키로 설정됨');
   }
   inputEl.addEventListener('keydown', handler);
@@ -5421,6 +5485,8 @@ function captureKey(inputEl, mode, action) {
       shortcutKeys.fullplay = Object.assign(shortcutKeys.fullplay, parsed.fullplay || {});
     }
   } catch(e) {}
+  // 저장된 단축키로 화면 힌트를 즉시 채운다(설정 페이지를 열지 않아도 보이도록)
+  try { if (typeof renderShortcutHints === 'function') renderShortcutHints(); } catch(e) {}
 })();
 
 // ── AI Integration ────────────────────────────────────
